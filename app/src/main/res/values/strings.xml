@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Grab</string>
+    <string name="qs_tile_label">Grab link</string>
+    <string name="qs_tile_subtitle">Copied link</string>
+    <string name="tagline">Paste a link.\nGet the file.</string>
+    <string name="paste_hint">Paste a video link</string>
+    <string name="action_fetch">Fetch</string>
+    <string name="action_paste_fetch">Paste link and fetch</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_grab_it">Grab it</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="tab_home">Home</string>
+    <string name="tab_downloads">Downloads</string>
+    <string name="tab_library">Library</string>
+    <string name="tab_settings">Settings</string>
+</resources>
