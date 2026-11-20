@@ -20,6 +20,7 @@ data class AppSettings(
     val librarySort: LibrarySort = LibrarySort.NEWEST,
     val libraryGroupBySite: Boolean = false,
     val useAria2c: Boolean = false,
+    val liteMode: Boolean = false,
 ) {
     val savePathLabel: String
         get() {

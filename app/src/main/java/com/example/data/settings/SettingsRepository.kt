@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.core.DeviceTier
 import com.example.core.GetiyHaptics
 import com.example.data.model.AppThemeMode
 import com.example.data.model.DownloadMode
@@ -19,6 +20,8 @@ import kotlinx.coroutines.flow.map
 private val Context.getiyDataStore: DataStore<Preferences> by preferencesDataStore(name = "getiy_settings")
 
 class SettingsRepository(private val context: Context) {
+
+    private val defaultLowEnd: Boolean by lazy { DeviceTier.isLowEndDevice(context) }
 
     private object Keys {
         val DEFAULT_MODE = stringPreferencesKey("default_mode")
@@ -35,18 +38,21 @@ class SettingsRepository(private val context: Context) {
         val LIBRARY_SORT = stringPreferencesKey("library_sort")
         val LIBRARY_GROUP = booleanPreferencesKey("library_group")
         val USE_ARIA2C = booleanPreferencesKey("use_aria2c")
+        val LITE_MODE = booleanPreferencesKey("lite_mode")
     }
 
     val settingsFlow: Flow<AppSettings> = context.getiyDataStore.data.map { p ->
         val haptics = p[Keys.HAPTICS] ?: true
         GetiyHaptics.enabled = haptics
         val heightRaw = p[Keys.MAX_HEIGHT] ?: 0
+        val liteMode = p[Keys.LITE_MODE] ?: defaultLowEnd
+        val defaultConcurrency = if (liteMode) 1 else 2
         AppSettings(
             defaultMode = DownloadMode.fromName(p[Keys.DEFAULT_MODE]),
             maxHeight = heightRaw.takeIf { it > 0 },
             container = p[Keys.CONTAINER] ?: "mp4",
             audioFormat = p[Keys.AUDIO_FORMAT] ?: "mp3",
-            concurrency = (p[Keys.CONCURRENCY] ?: 2).coerceIn(1, 3),
+            concurrency = (p[Keys.CONCURRENCY] ?: defaultConcurrency).coerceIn(1, 3),
             saveBase = p[Keys.SAVE_BASE] ?: "download",
             saveFolder = p[Keys.SAVE_FOLDER] ?: "Getiy",
             fileTemplate = p[Keys.FILE_TEMPLATE] ?: MediaHelpers.DEFAULT_FILE_TEMPLATE,
@@ -56,18 +62,20 @@ class SettingsRepository(private val context: Context) {
             librarySort = LibrarySort.fromName(p[Keys.LIBRARY_SORT]),
             libraryGroupBySite = p[Keys.LIBRARY_GROUP] ?: false,
             useAria2c = p[Keys.USE_ARIA2C] ?: false,
+            liteMode = liteMode,
         )
     }
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         context.getiyDataStore.edit { p ->
             val currentHeight = (p[Keys.MAX_HEIGHT] ?: 0).takeIf { it > 0 }
+            val currentLite = p[Keys.LITE_MODE] ?: defaultLowEnd
             val current = AppSettings(
                 defaultMode = DownloadMode.fromName(p[Keys.DEFAULT_MODE]),
                 maxHeight = currentHeight,
                 container = p[Keys.CONTAINER] ?: "mp4",
                 audioFormat = p[Keys.AUDIO_FORMAT] ?: "mp3",
-                concurrency = (p[Keys.CONCURRENCY] ?: 2).coerceIn(1, 3),
+                concurrency = (p[Keys.CONCURRENCY] ?: if (currentLite) 1 else 2).coerceIn(1, 3),
                 saveBase = p[Keys.SAVE_BASE] ?: "download",
                 saveFolder = p[Keys.SAVE_FOLDER] ?: "Getiy",
                 fileTemplate = p[Keys.FILE_TEMPLATE] ?: MediaHelpers.DEFAULT_FILE_TEMPLATE,
@@ -77,6 +85,7 @@ class SettingsRepository(private val context: Context) {
                 librarySort = LibrarySort.fromName(p[Keys.LIBRARY_SORT]),
                 libraryGroupBySite = p[Keys.LIBRARY_GROUP] ?: false,
                 useAria2c = p[Keys.USE_ARIA2C] ?: false,
+                liteMode = currentLite,
             )
             val next = transform(current)
             GetiyHaptics.enabled = next.hapticsEnabled
@@ -95,6 +104,7 @@ class SettingsRepository(private val context: Context) {
             p[Keys.LIBRARY_SORT] = next.librarySort.name
             p[Keys.LIBRARY_GROUP] = next.libraryGroupBySite
             p[Keys.USE_ARIA2C] = next.useAria2c
+            p[Keys.LITE_MODE] = next.liteMode
         }
     }
 }

@@ -74,6 +74,7 @@ class DownloadRepository(
 
     private val runningIds = ConcurrentHashMap.newKeySet<String>()
     private val pausingIds = ConcurrentHashMap.newKeySet<String>()
+    private val lastProgressPersist = ConcurrentHashMap<String, Pair<Long, Double>>()
 
     init {
         registerNetworkRecovery()
@@ -279,7 +280,8 @@ class DownloadRepository(
     private fun pumpQueue() {
         scope.launch {
             val settings: AppSettings = settingsRepository.settingsFlow.first()
-            val maxConcurrent = settings.concurrency.coerceIn(1, 3)
+            // Cap to 1 simultaneous process in Lite Mode to prevent OOM kills on low-RAM phones
+            val maxConcurrent = if (settings.liteMode) 1 else settings.concurrency.coerceIn(1, 3)
             val queued = dao.getAllAsc().filter { it.jobStatus == JobStatus.QUEUED }
 
             for (job in queued) {
@@ -308,11 +310,13 @@ class DownloadRepository(
                     template = job.template,
                     outputDir = outputDir,
                     useAria2c = settings.useAria2c,
+                    liteMode = settings.liteMode,
                 ) { event ->
                     handleEngineEvent(job.id, job.title, event)
                 }
             } finally {
                 runningIds.remove(job.id)
+                lastProgressPersist.remove(job.id)
                 _speeds.update { it - job.id }
                 pumpQueue()
             }
@@ -323,9 +327,18 @@ class DownloadRepository(
         when (event) {
             is EngineEvent.Starting -> Unit
             is EngineEvent.Progress -> {
-                if (event.speed != null) {
+                if (event.speed != null && _speeds.value[jobId] != event.speed) {
                     _speeds.update { it + (jobId to event.speed) }
                 }
+                val now = System.currentTimeMillis()
+                val prev = lastProgressPersist[jobId]
+                val shouldPersist = prev == null ||
+                    event.percent >= 100.0 ||
+                    (now - prev.first >= PROGRESS_DB_THROTTLE_MS && kotlin.math.abs(event.percent - prev.second) >= 0.5) ||
+                    kotlin.math.abs(event.percent - prev.second) >= 4.0
+                if (!shouldPersist) return
+                lastProgressPersist[jobId] = now to event.percent
+
                 scope.launch {
                     val current = dao.getById(jobId) ?: return@launch
                     if (current.jobStatus == JobStatus.RUNNING) {
@@ -410,5 +423,6 @@ class DownloadRepository(
 
     companion object {
         const val MAX_AUTO_RETRIES = 3
+        private const val PROGRESS_DB_THROTTLE_MS = 750L
     }
 }

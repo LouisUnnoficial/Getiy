@@ -17,6 +17,18 @@ android {
     versionName = "1.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // Ship 64-bit & 32-bit ARM (all Android phones) + x86_64 (modern emulators);
+    // drops ~52 MB of legacy 32-bit x86 native binaries.
+    ndk {
+      abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+    }
+  }
+
+  bundle {
+    abi { enableSplit = true }
+    density { enableSplit = true }
+    language { enableSplit = true }
   }
 
   packaging {
@@ -46,8 +58,9 @@ android {
 
   buildTypes {
     release {
-      isCrunchPngs = false
-      isMinifyEnabled = false
+      isCrunchPngs = true
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
@@ -116,6 +129,10 @@ dependencies {
   implementation(libs.youtubedl.library)
   implementation(libs.youtubedl.ffmpeg)
   implementation(libs.youtubedl.aria2c)
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.exoplayer.hls)
+  implementation(libs.androidx.media3.exoplayer.dash)
+  implementation(libs.androidx.media3.ui)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

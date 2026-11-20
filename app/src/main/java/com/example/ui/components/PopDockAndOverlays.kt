@@ -337,17 +337,23 @@ fun ClipboardOfferCard(
     onFetchOffer: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    liteMode: Boolean = false,
 ) {
-    val pulse = rememberInfiniteTransition(label = "getiyPulse")
-    val scale by pulse.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(700, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pulseScale",
-    )
+    val scale = if (liteMode) {
+        1f
+    } else {
+        val pulse = rememberInfiniteTransition(label = "getiyPulse")
+        val animatedScale by pulse.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.04f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(700, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "pulseScale",
+        )
+        animatedScale
+    }
 
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -503,12 +509,15 @@ private data class ConfettiParticle(
 fun PopConfettiOverlay(
     triggerCount: Int,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
+    if (!enabled || triggerCount <= 0) return
+
     var progress by remember { mutableFloatStateOf(1f) }
     val particles = remember(triggerCount) {
         val colors = listOf(GetiyMint, GetiyAzure, GetiyPeriwinkle, GetiyIce)
         val rng = Random(triggerCount * 31 + 7)
-        List(30) {
+        List(20) {
             ConfettiParticle(
                 angle = rng.nextFloat() * 360f,
                 speed = 240f + rng.nextFloat() * 440f,
@@ -521,16 +530,15 @@ fun PopConfettiOverlay(
     }
 
     LaunchedEffect(triggerCount) {
-        if (triggerCount <= 0) return@LaunchedEffect
         progress = 0f
         val start = System.currentTimeMillis()
-        val duration = 1200L
+        val duration = 1000L
         while (true) {
             val elapsed = System.currentTimeMillis() - start
             val t = (elapsed.toFloat() / duration).coerceIn(0f, 1f)
             progress = t
             if (t >= 1f) break
-            delay(16)
+            delay(20)
         }
     }
 

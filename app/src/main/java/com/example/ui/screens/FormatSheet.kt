@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import android.net.Uri
-import android.widget.VideoView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,6 +63,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.core.DeviceTier
 import com.example.core.GetiyHaptics
 import com.example.data.engine.GetiyEngine
 import com.example.data.model.DownloadMode
@@ -342,6 +342,7 @@ fun FormatBottomSheet(
 /**
  * Interactive video preview with CapCut-style draggable yellow trim handles.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun ClipPreviewSection(
     info: MediaInfo,
@@ -350,6 +351,7 @@ private fun ClipPreviewSection(
     onTrimChange: (Double, Double) -> Unit,
 ) {
     val pop = GetiyThemeTokens.pop
+    val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val duration = info.duration ?: 0.0
 
@@ -357,39 +359,104 @@ private fun ClipPreviewSection(
     var loadingPreview by remember { mutableStateOf(false) }
     var previewUri by remember(info.url) { mutableStateOf<Uri?>(null) }
     var previewHeaders by remember(info.url) { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
+    var triedLocalFallback by remember(info.url) { mutableStateOf(false) }
     var currentSec by remember { mutableFloatStateOf(0f) }
 
+    val exoPlayer = remember(previewUri, previewHeaders) {
+        val uri = previewUri ?: return@remember null
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+        val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .apply {
+                if (previewHeaders.isNotEmpty()) {
+                    setDefaultRequestProperties(previewHeaders)
+                }
+            }
+        val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory)
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+
+        androidx.media3.exoplayer.ExoPlayer.Builder(context, renderersFactory)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .setLoadControl(DeviceTier.buildLeanLoadControl(context, isInlinePreview = true))
+            .build()
+            .apply {
+                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
+                setMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
+                if (trim != null) seekTo((trim.start * 1000).toLong())
+                playWhenReady = true
+                prepare()
+            }
+    }
+
+    fun loadCachedPreviewFallback() {
+        if (triedLocalFallback || loadingPreview || duration !in 1.0..600.0) return
+        triedLocalFallback = true
+        loadingPreview = true
+        scope.launch {
+            val cached = runCatching { engine.previewFile(info.url) }.getOrNull()
+            loadingPreview = false
+            if (cached != null && File(cached).exists()) {
+                previewHeaders = emptyMap()
+                previewUri = Uri.fromFile(File(cached))
+                playing = true
+            } else {
+                playing = false
+            }
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        val player = exoPlayer
+        if (player == null) {
+            onDispose { }
+        } else {
+            val listener = object : androidx.media3.common.Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    playing = isPlaying
+                }
+
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    playing = false
+                    // If direct stream URL failed (e.g., signed CDN headers), fall back to cached preview
+                    if (previewUri?.scheme != "file") {
+                        previewUri = null
+                        loadCachedPreviewFallback()
+                    }
+                }
+            }
+            player.addListener(listener)
+            onDispose {
+                player.removeListener(listener)
+                player.release()
+            }
+        }
+    }
+
     // Keep playback looped inside trim range
-    LaunchedEffect(playing, trim) {
+    LaunchedEffect(exoPlayer, playing, trim) {
+        val player = exoPlayer ?: return@LaunchedEffect
         while (playing) {
-            val vv = videoViewRef
-            if (vv != null && vv.isPlaying) {
-                val posSec = vv.currentPosition / 1000f
+            if (player.isPlaying) {
+                val posSec = player.currentPosition / 1000f
                 currentSec = posSec
                 if (trim != null && (posSec >= trim.end || posSec < trim.start - 0.5)) {
-                    vv.seekTo((trim.start * 1000).toInt())
+                    player.seekTo((trim.start * 1000).toLong())
                 }
             }
             delay(150)
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            runCatching { videoViewRef?.stopPlayback() }
-        }
-    }
-
     fun startOrTogglePreview() {
-        val vv = videoViewRef
-        if (previewUri != null && vv != null) {
-            if (vv.isPlaying) {
-                vv.pause()
+        val player = exoPlayer
+        if (previewUri != null && player != null) {
+            if (player.isPlaying) {
+                player.pause()
                 playing = false
             } else {
-                if (trim != null) vv.seekTo((trim.start * 1000).toInt())
-                vv.start()
+                if (trim != null) player.seekTo((trim.start * 1000).toLong())
+                player.play()
                 playing = true
             }
             return
@@ -402,18 +469,7 @@ private fun ClipPreviewSection(
             playing = true
             return
         }
-        if (duration in 1.0..600.0 && !loadingPreview) {
-            loadingPreview = true
-            scope.launch {
-                val cached = runCatching { engine.previewFile(info.url) }.getOrNull()
-                loadingPreview = false
-                if (cached != null && File(cached).exists()) {
-                    previewHeaders = emptyMap()
-                    previewUri = Uri.fromFile(File(cached))
-                    playing = true
-                }
-            }
-        }
+        loadCachedPreviewFallback()
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -426,22 +482,19 @@ private fun ClipPreviewSection(
                 .clickable { startOrTogglePreview() },
             contentAlignment = Alignment.Center,
         ) {
-            if (previewUri != null) {
+            if (exoPlayer != null) {
                 AndroidView(
                     factory = { ctx ->
-                        VideoView(ctx).apply {
-                            setVideoURI(previewUri, previewHeaders)
-                            setOnPreparedListener { mp ->
-                                mp.isLooping = true
-                                if (trim != null) seekTo((trim.start * 1000).toInt())
-                                start()
-                                playing = true
-                            }
-                            setOnErrorListener { _, _, _ ->
-                                playing = false
-                                true
-                            }
-                            videoViewRef = this
+                        androidx.media3.ui.PlayerView(ctx).apply {
+                            player = exoPlayer
+                            useController = false
+                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        }
+                    },
+                    update = { view ->
+                        if (view.player !== exoPlayer) {
+                            view.player = exoPlayer
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -488,9 +541,9 @@ private fun ClipPreviewSection(
                 playheadSec = currentSec.toDouble(),
                 onTrimChange = { s, e ->
                     onTrimChange(s, e)
-                    videoViewRef?.let { vv ->
+                    exoPlayer?.let { player ->
                         val target = if (kotlin.math.abs(s - trim.start) > 0.05) s else e
-                        runCatching { vv.seekTo((target * 1000).toInt()) }
+                        runCatching { player.seekTo((target * 1000).toLong()) }
                     }
                 },
             )

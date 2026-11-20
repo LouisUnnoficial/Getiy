@@ -1,15 +1,9 @@
 package com.example.ui.components
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -47,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,7 +57,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.core.FileShareHelper
 import com.example.core.GetiyHaptics
 import com.example.ui.theme.GetiyAccentBrush
@@ -279,26 +276,26 @@ fun PopThumb(
                 )
             }
             !url.isNullOrBlank() -> {
-                SubcomposeAsyncImage(
-                    model = url,
+                val context = LocalContext.current
+                val request = remember(url) {
+                    ImageRequest.Builder(context)
+                        .data(url)
+                        .size(360, 240)
+                        .allowRgb565(true)
+                        .crossfade(false)
+                        .build()
+                }
+                Icon(
+                    imageVector = Icons.Rounded.Movie,
+                    contentDescription = null,
+                    tint = PopInk,
+                    modifier = Modifier.size(28.dp),
+                )
+                AsyncImage(
+                    model = request,
                     contentDescription = "Media thumbnail",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
-                    error = {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(tint),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Movie,
-                                contentDescription = null,
-                                tint = PopInk,
-                                modifier = Modifier.size(28.dp),
-                            )
-                        }
-                    },
                 )
             }
             else -> {
@@ -463,14 +460,12 @@ fun PopOptionTile(
             .padding(horizontal = 18.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AnimatedContent(targetState = selected, label = "radioIcon") { on ->
-            Icon(
-                imageVector = if (on) Icons.Rounded.RadioButtonChecked else Icons.Rounded.RadioButtonUnchecked,
-                contentDescription = null,
-                tint = if (on) pop.strong else pop.muted,
-                modifier = Modifier.size(22.dp),
-            )
-        }
+        Icon(
+            imageVector = if (selected) Icons.Rounded.RadioButtonChecked else Icons.Rounded.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (selected) pop.strong else pop.muted,
+            modifier = Modifier.size(22.dp),
+        )
         Spacer(Modifier.width(12.dp))
         Text(
             text = label,

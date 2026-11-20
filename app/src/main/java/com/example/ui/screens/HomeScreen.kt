@@ -1,11 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -51,10 +45,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -116,10 +109,14 @@ fun HomeScreen(
     val pop = GetiyThemeTokens.pop
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
-    val detectedPlatform = Links.platformOf(Links.extractLink(fetchState.urlText) ?: fetchState.urlText)
+    val detectedPlatform = remember(fetchState.urlText) {
+        Links.platformOf(Links.extractLink(fetchState.urlText) ?: fetchState.urlText)
+    }
     val isBusy = fetchState.result is FetchResult.Loading
-    val activeJobs = recentJobs.filter { it.jobStatus.isActive }
-    val completedRecent = recentJobs.filter { it.jobStatus == JobStatus.DONE }.take(6)
+    val activeJobs = remember(recentJobs) { recentJobs.filter { it.jobStatus.isActive } }
+    val completedRecent = remember(recentJobs) {
+        recentJobs.filter { it.jobStatus == JobStatus.DONE }.take(6)
+    }
 
     Box(
         modifier = Modifier
@@ -577,16 +574,8 @@ private fun BentoStatTile(
 @Composable
 private fun PlatformPill(label: String, active: Boolean) {
     val pop = GetiyThemeTokens.pop
-    val bg by animateColorAsState(
-        targetValue = if (active) pop.strong else pop.card,
-        animationSpec = tween(220),
-        label = "chipBg",
-    )
-    val fg by animateColorAsState(
-        targetValue = if (active) pop.onStrong else pop.text,
-        animationSpec = tween(220),
-        label = "chipFg",
-    )
+    val bg = if (active) pop.strong else pop.card
+    val fg = if (active) pop.onStrong else pop.text
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
@@ -615,14 +604,7 @@ private fun PlatformPill(label: String, active: Boolean) {
 @Composable
 private fun FetchingSkeletonCard(url: String) {
     val pop = GetiyThemeTokens.pop
-    val pulse = rememberInfiniteTransition(label = "skeletonPulse")
-    val alpha by pulse.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(750), RepeatMode.Reverse),
-        label = "skelAlpha",
-    )
-    val platform = Links.platformOf(url)
+    val platform = remember(url) { Links.platformOf(url) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -637,8 +619,7 @@ private fun FetchingSkeletonCard(url: String) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(RoundedCornerShape(13.dp))
-                    .background(pop.soft)
-                    .alpha(alpha),
+                    .background(pop.soft),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

@@ -24,4 +24,18 @@
 -keep class com.yausername.** { *; }
 -dontwarn com.yausername.**
 -keep class com.example.data.engine.** { *; }
+-keep class com.example.data.db.** { *; }
+-keep class com.example.data.model.** { *; }
+
+# Keep Media3 ExoPlayer reflective factories & extractors
+-keep class androidx.media3.** { *; }
+-dontwarn androidx.media3.**
+
+# Avoid noisy warnings from OkHttp / Conscrypt optional platform classes
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
+
 

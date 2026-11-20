@@ -12,6 +12,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import com.example.core.Links
+import com.example.data.model.MediaFormat
 import com.example.data.model.MediaHelpers
 import com.example.data.model.MediaInfo
 import com.example.data.settings.AppSettings
@@ -27,10 +28,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.io.File
 import java.util.Locale
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 sealed class EngineEvent {
     data class Starting(val jobId: String) : EngineEvent()
@@ -48,7 +51,8 @@ sealed class EngineEvent {
 }
 
 data class EngineStatus(
-    val initializing: Boolean = true,
+    val initializing: Boolean = false,
+    val standby: Boolean = true,
     val ytDlpReady: Boolean = false,
     val ytDlpVersion: String? = null,
     val ffmpegReady: Boolean = false,
@@ -70,27 +74,49 @@ data class EngineStatus(
                 append(ffmpegVersion ?: "ready")
                 if (aria2cReady) append(" · Aria2c")
             }
+            standby && error == null -> "On-demand mode · loads only when needed"
             else -> error ?: "Engine initialization incomplete"
         }
 }
 
 /**
  * Native Android yt-dlp, FFmpeg, and Aria2c engine powered by youtubedl-android.
+ * Uses lazy on-demand initialization so cold startup consumes near-zero CPU/RAM on low-end devices.
  * All native binaries are packaged directly inside the APK (zero dynamic code loading).
  */
 class GetiyEngine(private val context: Context) {
 
     private val appContext = context.applicationContext
-    private val initMutex = Mutex()
+    private val ytDlpMutex = Mutex()
+    private val ffmpegMutex = Mutex()
+    private val aria2cMutex = Mutex()
 
     @Volatile
-    private var initialized = false
+    private var ytDlpInitialized = false
 
-    private val _engineStatus = MutableStateFlow(EngineStatus(initializing = true))
+    @Volatile
+    private var ffmpegInitialized = false
+
+    @Volatile
+    private var aria2cInitialized = false
+
+    @Volatile
+    private var lastNotificationUpdateMs = 0L
+
+    private val _engineStatus = MutableStateFlow(EngineStatus(initializing = false, standby = true))
     val engineStatus: StateFlow<EngineStatus> = _engineStatus.asStateFlow()
 
     private val activeJobs = ConcurrentHashMap<String, Pair<String, Float>>()
     private val ffmpegProcesses = ConcurrentHashMap<String, Process>()
+    private val httpClient by lazy {
+        OkHttpClient.Builder()
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
+            .build()
+    }
 
     private val speedRegex = Regex("""at\s+([\d.]+\s*[KMG]?i?B/s)""")
     private val networkErrorRegex = Regex(
@@ -101,93 +127,134 @@ class GetiyEngine(private val context: Context) {
     )
 
     /**
-     * Initializes youtubedl-android (yt-dlp + Python), FFmpeg, and Aria2c and probes their binaries.
-     * Safe to call repeatedly; retries cleanly if a previous attempt failed or [force] is true.
+     * Zero-subprocess startup inspection: reads cached yt-dlp version metadata if available
+     * without unpacking FFmpeg/Aria2c or spawning native child processes at app launch.
+     */
+    suspend fun warmUpLightweight(): EngineStatus = withContext(Dispatchers.IO) {
+        val cachedVersion = runCatching {
+            YoutubeDL.getInstance().versionName(appContext)?.trim()?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+        val existingFfmpeg = resolveFfmpegBinary() != null
+        val updated = _engineStatus.value.copy(
+            initializing = false,
+            standby = !ytDlpInitialized,
+            ytDlpVersion = cachedVersion ?: _engineStatus.value.ytDlpVersion,
+            ffmpegReady = ffmpegInitialized || existingFfmpeg,
+        )
+        _engineStatus.value = updated
+        updated
+    }
+
+    /**
+     * Full explicit verification (triggered only when user taps "Verify engines" in Settings).
+     * Initializes yt-dlp, FFmpeg, and Aria2c and probes their versions.
      */
     suspend fun initializeEngines(force: Boolean = false): EngineStatus = withContext(Dispatchers.IO) {
-        initMutex.withLock {
-            if (initialized && !force && _engineStatus.value.allCoreReady) {
-                return@withLock _engineStatus.value
-            }
-            _engineStatus.value = _engineStatus.value.copy(initializing = true, error = null)
+        _engineStatus.value = _engineStatus.value.copy(initializing = true, standby = false, error = null)
 
-            var ytReady = false
-            var ytVersion: String? = null
-            var ffReady = false
-            var ffVersion: String? = null
-            var ariaReady = false
-            val errors = mutableListOf<String>()
+        val errors = mutableListOf<String>()
 
-            // 1. Initialize core yt-dlp + Python runtime (youtubedl-android:library)
-            runCatching {
+        runCatching { ensureYtDlpReady(force = force, probeSubprocess = force) }
+            .onFailure { errors.add("yt-dlp: ${cleanEngineError(it)}") }
+
+        runCatching { ensureFfmpegReady(force = force, probeVersion = true) }
+            .onFailure { errors.add("FFmpeg: ${cleanEngineError(it)}") }
+
+        runCatching { ensureAria2cReady(force = force) }
+
+        val cur = _engineStatus.value
+        val finalStatus = cur.copy(
+            initializing = false,
+            standby = false,
+            error = errors.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+        )
+        _engineStatus.value = finalStatus
+        finalStatus
+    }
+
+    private suspend fun ensureYtDlpReady(force: Boolean = false, probeSubprocess: Boolean = false) {
+        if (ytDlpInitialized && !force) return
+        ytDlpMutex.withLock {
+            if (ytDlpInitialized && !force) return@withLock
+            _engineStatus.value = _engineStatus.value.copy(initializing = true, standby = false, error = null)
+            try {
                 YoutubeDL.getInstance().init(appContext)
-                ytReady = true
-                ytVersion = probeYtDlpVersion()
-            }.onFailure { err ->
-                errors.add("yt-dlp: ${cleanEngineError(err)}")
+                ytDlpInitialized = true
+                val ver = probeYtDlpVersion(allowSubprocess = probeSubprocess)
+                _engineStatus.value = _engineStatus.value.copy(
+                    initializing = false,
+                    standby = false,
+                    ytDlpReady = true,
+                    ytDlpVersion = ver,
+                )
+            } catch (err: Throwable) {
+                val msg = cleanEngineError(err)
+                _engineStatus.value = _engineStatus.value.copy(
+                    initializing = false,
+                    standby = false,
+                    ytDlpReady = false,
+                    error = "yt-dlp: $msg",
+                )
+                throw IllegalStateException(msg, err)
             }
+        }
+    }
 
-            // 2. Initialize bundled FFmpeg runtime (youtubedl-android:ffmpeg)
-            runCatching {
-                FFmpeg.getInstance().init(appContext)
-                ffVersion = probeFfmpegVersion()
-                ffReady = resolveFfmpegBinary() != null || ffVersion != null
-                if (!ffReady) {
-                    errors.add("FFmpeg binary could not be located after initialization")
-                }
-            }.onFailure { err ->
-                errors.add("FFmpeg: ${cleanEngineError(err)}")
+    private suspend fun ensureFfmpegReady(force: Boolean = false, probeVersion: Boolean = false): File {
+        if (ffmpegInitialized && !force) {
+            resolveFfmpegBinary()?.let { return it }
+        }
+        return ffmpegMutex.withLock {
+            if (ffmpegInitialized && !force) {
+                resolveFfmpegBinary()?.let { return@withLock it }
             }
+            FFmpeg.getInstance().init(appContext)
+            val binary = resolveFfmpegBinary()
+            val ffVer = if (probeVersion) probeFfmpegVersion() else _engineStatus.value.ffmpegVersion
+            val ok = binary != null
+            ffmpegInitialized = ok
+            _engineStatus.value = _engineStatus.value.copy(
+                ffmpegReady = ok,
+                ffmpegVersion = ffVer ?: _engineStatus.value.ffmpegVersion,
+            )
+            if (!ok || binary == null) {
+                throw IllegalStateException(
+                    "FFmpeg binary not found. Open Settings → Verify engines to re-initialize.",
+                )
+            }
+            binary
+        }
+    }
 
-            // 3. Initialize optional Aria2c multi-connection engine (youtubedl-android:aria2c)
-            ariaReady = runCatching {
+    private suspend fun ensureAria2cReady(force: Boolean = false): Boolean {
+        if (aria2cInitialized && !force) return true
+        return aria2cMutex.withLock {
+            if (aria2cInitialized && !force) return@withLock true
+            val ok = runCatching {
                 Aria2c.getInstance().init(appContext)
                 true
             }.getOrDefault(false)
-
-            initialized = ytReady && ffReady
-            val status = EngineStatus(
-                initializing = false,
-                ytDlpReady = ytReady,
-                ytDlpVersion = ytVersion,
-                ffmpegReady = ffReady,
-                ffmpegVersion = ffVersion,
-                aria2cReady = ariaReady,
-                error = errors.takeIf { it.isNotEmpty() }?.joinToString(" · "),
-            )
-            _engineStatus.value = status
-            status
+            aria2cInitialized = ok
+            _engineStatus.value = _engineStatus.value.copy(aria2cReady = ok)
+            ok
         }
     }
 
     private suspend fun ensureReady() {
-        val status = initializeEngines(force = false)
-        if (!status.ytDlpReady) {
-            throw IllegalStateException(status.error ?: "yt-dlp engine failed to initialize")
-        }
-    }
-
-    private suspend fun ensureFfmpegReady(): File {
-        val status = initializeEngines(force = false)
-        val binary = resolveFfmpegBinary()
-        if (!status.ffmpegReady || binary == null) {
-            throw IllegalStateException(
-                status.error ?: "FFmpeg binary not found. Open Settings → Verify engines to re-initialize.",
-            )
-        }
-        return binary
+        ensureYtDlpReady(force = false, probeSubprocess = false)
     }
 
     suspend fun initVersion(): String {
-        val status = initializeEngines(force = false)
-        return status.ytDlpVersion ?: "bundled"
+        ensureYtDlpReady(force = false, probeSubprocess = false)
+        return _engineStatus.value.ytDlpVersion ?: "bundled"
     }
 
-    private fun probeYtDlpVersion(): String {
+    private fun probeYtDlpVersion(allowSubprocess: Boolean = false): String {
         val fromLibrary = runCatching {
             YoutubeDL.getInstance().versionName(appContext)?.trim()
         }.getOrNull()
         if (!fromLibrary.isNullOrBlank()) return fromLibrary
+        if (!allowSubprocess) return "bundled"
 
         return runCatching {
             val req = YoutubeDLRequest(emptyList()).apply { addOption("--version") }
@@ -272,49 +339,205 @@ class GetiyEngine(private val context: Context) {
         true
     }.getOrDefault(false)
 
+    /**
+     * Resolves short share links (vm.tiktok.com, pin.it, t.co, redd.it, instagram.com/share/...)
+     * to their canonical destination URL so yt-dlp extractors always match cleanly.
+     */
+    private fun resolveRedirectUrl(rawUrl: String): String {
+        val cleaned = Links.stripTrackingParams(rawUrl)
+        if (!Links.isShortShareLink(cleaned)) return cleaned
+        return runCatching {
+            val req = Request.Builder()
+                .url(cleaned)
+                .header("User-Agent", DESKTOP_USER_AGENT)
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                val finalUrl = resp.request.url.toString()
+                if (finalUrl.startsWith("http", ignoreCase = true) && !finalUrl.contains("/accounts/login")) {
+                    Links.stripTrackingParams(finalUrl)
+                } else {
+                    cleaned
+                }
+            }
+        }.getOrDefault(cleaned)
+    }
+
     suspend fun fetch(url: String): MediaInfo = withContext(Dispatchers.IO) {
         ensureReady()
-        val cleanUrl = Links.stripTrackingParams(url)
-        val jar = File(appContext.cacheDir, "cookies-${UUID.randomUUID()}.txt")
-        try {
-            jar.writeText("# Netscape HTTP Cookie File\n")
-            val req = YoutubeDLRequest(cleanUrl)
-            req.addOption("--cookies", jar.absolutePath)
-            req.addOption("--no-cache-dir")
-            req.addOption("--dump-single-json")
-            req.addOption("--no-warnings")
-            req.addOption("--no-check-certificates")
-            req.addOption("--socket-timeout", "30")
-            req.addOption("--retries", "3")
+        val resolvedUrl = resolveRedirectUrl(url)
+        val isPlaylistUrl = Links.looksLikePlaylistUrl(resolvedUrl)
+        val platform = Links.platformOf(resolvedUrl)
+
+        var lastError: Throwable? = null
+
+        // Attempt 1: Clean primary yt-dlp extraction (no empty cookie jar, flat-playlist ONLY for playlists)
+        val primary = runCatching {
+            val req = buildFetchRequest(
+                targetUrl = resolvedUrl,
+                isPlaylistUrl = isPlaylistUrl,
+                platform = platform,
+                fallbackMode = false,
+            )
+            val out = YoutubeDL.getInstance().execute(req).out
+            MediaHelpers.parseMediaInfoJson(out, resolvedUrl)
+        }
+        primary.getOrNull()?.let { return@withContext it }
+        lastError = primary.exceptionOrNull()
+
+        // Attempt 2: Resilient retry with IPv4, --no-playlist, and mobile/client fallback
+        val retry = runCatching {
+            val req = buildFetchRequest(
+                targetUrl = resolvedUrl,
+                isPlaylistUrl = false,
+                platform = platform,
+                fallbackMode = true,
+            )
+            val out = YoutubeDL.getInstance().execute(req).out
+            MediaHelpers.parseMediaInfoJson(out, resolvedUrl)
+        }
+        retry.getOrNull()?.let { return@withContext it }
+        lastError = retry.exceptionOrNull() ?: lastError
+
+        // Attempt 3: Direct media URL or OpenGraph (<meta property="og:video">) fallback
+        // Covers Pinterest, Threads, Tumblr, blogs, direct MP4/M3U8 links, or temporary extractor blocks
+        fetchDirectOrOpenGraphFallback(resolvedUrl)?.let { return@withContext it }
+
+        throw IllegalStateException(
+            cleanEngineError(lastError ?: IllegalStateException("Unable to read this link")),
+            lastError,
+        )
+    }
+
+    private fun buildFetchRequest(
+        targetUrl: String,
+        isPlaylistUrl: Boolean,
+        platform: String?,
+        fallbackMode: Boolean,
+    ): YoutubeDLRequest {
+        val req = YoutubeDLRequest(targetUrl)
+        req.addOption("--ignore-config")
+        req.addOption("--no-cache-dir")
+        req.addOption("--dump-single-json")
+        req.addOption("--no-warnings")
+        req.addOption("--no-check-certificates")
+        req.addOption("--geo-bypass")
+        req.addOption("--socket-timeout", "30")
+        req.addOption("--retries", "3")
+
+        if (isPlaylistUrl) {
             req.addOption("--flat-playlist")
             req.addOption("--playlist-items", "1:300")
-
-            val out = YoutubeDL.getInstance().execute(req).out
-            val cookiesText = if (jar.exists()) jar.readText() else ""
-            val combined = out + "\n\u0000GETIY-COOKIES\u0000\n" + cookiesText
-            MediaHelpers.parseMediaInfoJson(combined, cleanUrl)
-        } catch (t: Throwable) {
-            throw IllegalStateException(cleanEngineError(t), t)
-        } finally {
-            runCatching { jar.delete() }
+        } else {
+            req.addOption("--no-playlist")
         }
+
+        if (fallbackMode) {
+            req.addOption("--force-ipv4")
+            when (platform) {
+                "YouTube" -> req.addOption("--extractor-args", "youtube:player_client=android,web")
+                "TikTok" -> req.addOption("--user-agent", MOBILE_USER_AGENT)
+                else -> {
+                    req.addOption("--user-agent", MOBILE_USER_AGENT)
+                    req.addOption("--add-header", "Accept-Language:en-US,en;q=0.9")
+                }
+            }
+        } else {
+            when (platform) {
+                "YouTube", "TikTok" -> {
+                    // Let yt-dlp use its native extractor client headers for YouTube & TikTok first
+                }
+                else -> {
+                    req.addOption("--user-agent", DESKTOP_USER_AGENT)
+                    req.addOption("--add-header", "Accept-Language:en-US,en;q=0.9")
+                }
+            }
+        }
+
+        return req
     }
+
+    private fun fetchDirectOrOpenGraphFallback(targetUrl: String): MediaInfo? = runCatching {
+        val req = Request.Builder()
+            .url(targetUrl)
+            .header("User-Agent", DESKTOP_USER_AGENT)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .get()
+            .build()
+
+        httpClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return@runCatching null
+            val finalUrl = resp.request.url.toString()
+            val contentType = resp.header("Content-Type").orEmpty().lowercase(Locale.US)
+            val site = Links.platformOf(finalUrl) ?: Uri.parse(finalUrl).host?.removePrefix("www.")
+
+            // Direct media file or HLS playlist URL
+            if (contentType.startsWith("video/") ||
+                contentType.startsWith("audio/") ||
+                contentType.contains("mpegurl") ||
+                DIRECT_MEDIA_URL_REGEX.containsMatchIn(finalUrl)
+            ) {
+                val isAudio = contentType.startsWith("audio/") ||
+                    Regex("""\.(mp3|m4a|opus|ogg|wav|flac)(\?|$)""", RegexOption.IGNORE_CASE).containsMatchIn(finalUrl)
+                val ext = inferExtFromUrlOrMime(finalUrl, contentType, isAudio)
+                val title = Uri.parse(finalUrl).lastPathSegment
+                    ?.substringBeforeLast('.')
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Media download"
+                val contentLength = resp.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0 }
+                return@runCatching MediaInfo(
+                    url = finalUrl,
+                    title = title,
+                    site = site,
+                    formats = listOf(
+                        MediaFormat(
+                            formatId = "direct",
+                            ext = ext,
+                            height = null,
+                            bytes = contentLength,
+                            hasVideo = !isAudio,
+                            hasAudio = true,
+                            url = finalUrl,
+                            protocol = if (ext == "m3u8") "m3u8_native" else "https",
+                        ),
+                    ),
+                )
+            }
+
+            if (!contentType.contains("html") && !contentType.contains("xhtml")) {
+                return@runCatching null
+            }
+
+            // Read up to 256 KB of HTML head/body to find embedded video metadata
+            val html = resp.body?.source()?.let { source ->
+                source.request(256 * 1024L)
+                source.buffer.clone().readUtf8(minOf(source.buffer.size, 256 * 1024L))
+            }.orEmpty()
+            if (html.isBlank()) return@runCatching null
+
+            extractMediaFromHtml(html, finalUrl, site)
+        }
+    }.getOrNull()
 
     /** Downloads a lightweight cached MP4 preview when sites refuse direct stream playback (e.g. TikTok). */
     suspend fun previewFile(url: String): String? = withContext(Dispatchers.IO) {
         ensureReady()
-        val cleanUrl = Links.stripTrackingParams(url)
+        val resolvedUrl = resolveRedirectUrl(url)
         val dir = File(appContext.cacheDir, "preview").apply {
             deleteRecursively()
             mkdirs()
         }
-        val req = YoutubeDLRequest(cleanUrl)
-        req.addOption("-f", "w[vcodec!=none][acodec!=none][ext=mp4]/w[vcodec!=none][acodec!=none]/w")
+        val req = YoutubeDLRequest(resolvedUrl)
+        req.addOption("--ignore-config")
+        req.addOption("-f", "w[vcodec!=none][acodec!=none][ext=mp4]/w[vcodec!=none][acodec!=none]/b[ext=mp4]/b/w")
         req.addOption("-o", File(dir, "preview.%(ext)s").absolutePath)
         req.addOption("--no-playlist")
         req.addOption("--no-part")
         req.addOption("--no-cache-dir")
         req.addOption("--no-check-certificates")
+        req.addOption("--geo-bypass")
         req.addOption("--socket-timeout", "25")
         req.addOption("--print", "after_move:filepath")
         req.addOption("--no-simulate")
@@ -333,53 +556,83 @@ class GetiyEngine(private val context: Context) {
         template: String,
         outputDir: File,
         useAria2c: Boolean = false,
+        liteMode: Boolean = false,
         onEvent: (EngineEvent) -> Unit,
     ) = withContext(Dispatchers.IO) {
         onEvent(EngineEvent.Starting(jobId))
         activeJobs[jobId] = title to 0f
-        refreshForegroundService()
+        refreshForegroundService(force = true)
         val startedAt = System.currentTimeMillis() - 1000L
         try {
             ensureReady()
+            // Initialize FFmpeg lazily right before download so muxing/audio conversion always works
+            val ffmpegBin = runCatching { ensureFfmpegReady(force = false, probeVersion = false) }.getOrNull()
+            // Initialize Aria2c strictly on-demand only when the user actually enabled it
+            val hasTrim = args.any { it == "--download-sections" }
+            val ariaReady = if (useAria2c && !hasTrim) ensureAria2cReady(force = false) else false
+
             if (!outputDir.exists()) outputDir.mkdirs()
 
-            val cleanUrl = Links.stripTrackingParams(url)
+            val resolvedUrl = resolveRedirectUrl(url)
+            val platform = Links.platformOf(resolvedUrl)
             val ytTemplate = if (template.isBlank()) "%(title).80B [%(id)s]" else MediaHelpers.ytDlpTemplate(template)
-            val req = YoutubeDLRequest(cleanUrl)
-            req.addOption("-o", File(outputDir, "$ytTemplate$suffix.%(ext)s").absolutePath)
-            req.addOption("--no-playlist")
-            req.addOption("--newline")
-            req.addOption("--no-mtime")
-            req.addOption("--no-cache-dir")
-            req.addOption("--continue")
-            req.addOption("--no-check-certificates")
-            req.addOption("--socket-timeout", "30")
-            req.addOption("--retries", "5")
-            req.addOption("--fragment-retries", "5")
-            req.addOption("--print", "after_move:filepath")
-            req.addOption("--no-simulate")
-            req.addOption("--concurrent-fragments", "4")
-            req.addOption("--http-chunk-size", "10M")
 
-            // Point yt-dlp directly at the resolved bundled FFmpeg location when present
-            resolveFfmpegBinary()?.let { ffBin ->
-                req.addOption("--ffmpeg-location", ffBin.absolutePath)
+            fun buildDownloadRequest(forceIpv4: Boolean): YoutubeDLRequest {
+                val req = YoutubeDLRequest(resolvedUrl)
+                req.addOption("--ignore-config")
+                req.addOption("-o", File(outputDir, "$ytTemplate$suffix.%(ext)s").absolutePath)
+                req.addOption("--no-playlist")
+                req.addOption("--newline")
+                req.addOption("--no-mtime")
+                req.addOption("--no-cache-dir")
+                req.addOption("--continue")
+                req.addOption("--no-check-certificates")
+                req.addOption("--geo-bypass")
+                req.addOption("--socket-timeout", "30")
+                req.addOption("--retries", "5")
+                req.addOption("--fragment-retries", "5")
+                req.addOption("--print", "after_move:filepath")
+                req.addOption("--no-simulate")
+                // Use fewer concurrent fragment sockets in Lite Mode to keep RAM & CPU low
+                req.addOption("--concurrent-fragments", if (liteMode) "2" else "4")
+
+                // Only apply HTTP Range chunking on YouTube; other CDNs (Instagram, TikTok, X,
+                // Pinterest, Reddit) often reject forced Range requests with HTTP 403/416.
+                if (platform == "YouTube") {
+                    req.addOption("--http-chunk-size", if (liteMode) "4M" else "10M")
+                } else if (platform != "TikTok") {
+                    req.addOption("--user-agent", if (forceIpv4) MOBILE_USER_AGENT else DESKTOP_USER_AGENT)
+                    req.addOption("--add-header", "Accept-Language:en-US,en;q=0.9")
+                }
+
+                if (forceIpv4) {
+                    req.addOption("--force-ipv4")
+                    if (platform == "YouTube") {
+                        req.addOption("--extractor-args", "youtube:player_client=android,web")
+                    }
+                }
+
+                // Point yt-dlp directly at the resolved bundled FFmpeg location when present
+                (ffmpegBin ?: resolveFfmpegBinary())?.let { ffBin ->
+                    req.addOption("--ffmpeg-location", ffBin.absolutePath)
+                }
+
+                // Enable Aria2c external multi-connection downloader when requested, initialized, and not trimming
+                if (ariaReady && !hasTrim) {
+                    req.addOption("--downloader", "libaria2c.so")
+                    val ariaArgs = if (liteMode) "aria2c:-x 4 -s 4 -k 1M" else "aria2c:-x 8 -s 8 -k 1M"
+                    req.addOption("--downloader-args", ariaArgs)
+                }
+
+                // Properly pair flag + argument values for YoutubeDLRequest
+                applyArgsToRequest(req, args)
+                return req
             }
 
-            // Enable Aria2c external multi-connection downloader when requested, initialized, and not trimming
-            val hasTrim = args.any { it == "--download-sections" }
-            if (useAria2c && _engineStatus.value.aria2cReady && !hasTrim) {
-                req.addOption("--downloader", "libaria2c.so")
-                req.addOption("--downloader-args", "aria2c:-x 8 -s 8 -k 1M")
-            }
-
-            // Properly pair flag + argument values for YoutubeDLRequest
-            applyArgsToRequest(req, args)
-
-            val resp = YoutubeDL.getInstance().execute(req, jobId) { progress, eta, line ->
+            val callback: (Float, Long, String?) -> Unit = { progress, eta, line ->
                 val clamped = progress.coerceIn(0f, 100f)
                 activeJobs[jobId] = title to clamped
-                refreshForegroundService()
+                refreshForegroundService(force = false)
                 val speed = speedRegex.find(line ?: "")?.groupValues?.getOrNull(1)
                 onEvent(
                     EngineEvent.Progress(
@@ -390,6 +643,15 @@ class GetiyEngine(private val context: Context) {
                         line = line,
                     ),
                 )
+            }
+
+            val resp = try {
+                YoutubeDL.getInstance().execute(buildDownloadRequest(forceIpv4 = false), jobId, callback)
+            } catch (canceled: YoutubeDL.CanceledException) {
+                throw canceled
+            } catch (_: Throwable) {
+                // Automatic IPv4 + fallback client retry before reporting failure
+                YoutubeDL.getInstance().execute(buildDownloadRequest(forceIpv4 = true), jobId, callback)
             }
 
             val paths = collectOutputs(outputDir, resp.out, matchId, startedAt)
@@ -410,7 +672,7 @@ class GetiyEngine(private val context: Context) {
             }
         } finally {
             activeJobs.remove(jobId)
-            refreshForegroundService()
+            refreshForegroundService(force = true)
         }
     }
 
@@ -423,7 +685,7 @@ class GetiyEngine(private val context: Context) {
     ) = withContext(Dispatchers.IO) {
         onEvent(EngineEvent.Starting(jobId))
         activeJobs[jobId] = title to 0f
-        refreshForegroundService()
+        refreshForegroundService(force = true)
         try {
             val ffmpegBin = ensureFfmpegReady()
             if (!input.exists()) throw IllegalStateException("The file is no longer on the phone")
@@ -490,7 +752,7 @@ class GetiyEngine(private val context: Context) {
         } finally {
             ffmpegProcesses.remove(jobId)
             activeJobs.remove(jobId)
-            refreshForegroundService()
+            refreshForegroundService(force = true)
         }
     }
 
@@ -628,12 +890,27 @@ class GetiyEngine(private val context: Context) {
         return f
     }
 
-    private fun refreshForegroundService() {
+    private fun refreshForegroundService(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && activeJobs.isNotEmpty() && now - lastNotificationUpdateMs < 1000L) {
+            return
+        }
+        lastNotificationUpdateMs = now
         DownloadService.update(appContext, activeJobs.values.toList())
     }
 
     companion object {
         const val YOUTUBEDL_ANDROID_VERSION = "0.18.1"
+
+        private const val DESKTOP_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        private const val MOBILE_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+
+        private val DIRECT_MEDIA_URL_REGEX = Regex(
+            """\.(mp4|mkv|webm|mov|m4v|m3u8|mpd|mp3|m4a|opus|ogg|wav|flac)(\?|$)""",
+            RegexOption.IGNORE_CASE,
+        )
 
         private val valueTakingFlags = setOf(
             "-f", "--format",
@@ -658,7 +935,92 @@ class GetiyEngine(private val context: Context) {
             "--ffmpeg-location",
             "--user-agent",
             "--referer",
+            "--add-header",
+            "--extractor-args",
         )
+
+        /**
+         * Extracts playable video metadata from OpenGraph / Twitter Card / HTML5 video tags
+         * as a resilient fallback when a site blocks yt-dlp's API extractor.
+         */
+        internal fun extractMediaFromHtml(html: String, pageUrl: String, site: String?): MediaInfo? {
+            fun metaValue(attrName: String): String? {
+                val p1 = Regex(
+                    """<meta[^>]+(?:property|name)=["']${Regex.escape(attrName)}["'][^>]+content=["']([^"']+)["']""",
+                    RegexOption.IGNORE_CASE,
+                )
+                val p2 = Regex(
+                    """<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${Regex.escape(attrName)}["']""",
+                    RegexOption.IGNORE_CASE,
+                )
+                val raw = p1.find(html)?.groupValues?.getOrNull(1)
+                    ?: p2.find(html)?.groupValues?.getOrNull(1)
+                    ?: return null
+                return decodeHtmlEntities(raw).trim().takeIf { it.isNotBlank() }
+            }
+
+            val videoUrl = listOfNotNull(
+                metaValue("og:video:secure_url"),
+                metaValue("og:video:url"),
+                metaValue("og:video"),
+                metaValue("twitter:player:stream"),
+                Regex(""""contentUrl"\s*:\s*"(https?:[^"]+\.(?:mp4|m3u8|webm)[^"]*)"""", RegexOption.IGNORE_CASE)
+                    .find(html)?.groupValues?.getOrNull(1)?.replace("\\/", "/"),
+                Regex("""<(?:video|source)[^>]+src=["'](https?://[^"']+\.(?:mp4|m3u8|webm)[^"']*)["']""", RegexOption.IGNORE_CASE)
+                    .find(html)?.groupValues?.getOrNull(1)?.let(::decodeHtmlEntities),
+            ).firstOrNull { it.startsWith("http", ignoreCase = true) } ?: return null
+
+            val title = metaValue("og:title")
+                ?: metaValue("twitter:title")
+                ?: Regex("""<title[^>]*>([^<]+)</title>""", RegexOption.IGNORE_CASE)
+                    .find(html)?.groupValues?.getOrNull(1)?.let(::decodeHtmlEntities)?.trim()
+                ?: "Untitled video"
+            val thumb = metaValue("og:image:secure_url") ?: metaValue("og:image")
+            val height = metaValue("og:video:height")?.toIntOrNull()?.takeIf { it > 0 }
+            val ext = inferExtFromUrlOrMime(videoUrl, "", isAudio = false)
+
+            return MediaInfo(
+                url = videoUrl,
+                title = title,
+                thumbnail = thumb,
+                site = site,
+                formats = listOf(
+                    MediaFormat(
+                        formatId = "og_video",
+                        ext = ext,
+                        height = height,
+                        bytes = null,
+                        hasVideo = true,
+                        hasAudio = true,
+                        url = videoUrl,
+                        protocol = if (ext == "m3u8") "m3u8_native" else "https",
+                    ),
+                ),
+            )
+        }
+
+        private fun inferExtFromUrlOrMime(url: String, mime: String, isAudio: Boolean): String {
+            val pathExt = Regex("""\.([a-z0-9]{2,5})(?:\?|$)""", RegexOption.IGNORE_CASE)
+                .find(url)?.groupValues?.getOrNull(1)?.lowercase(Locale.US)
+            if (pathExt in setOf("mp4", "mkv", "webm", "mov", "m4v", "m3u8", "mp3", "m4a", "opus", "ogg", "wav", "flac")) {
+                return pathExt!!
+            }
+            return when {
+                mime.contains("mpegurl") -> "m3u8"
+                mime.contains("webm") -> "webm"
+                mime.contains("matroska") -> "mkv"
+                mime.contains("mpeg") && isAudio -> "mp3"
+                isAudio -> "m4a"
+                else -> "mp4"
+            }
+        }
+
+        private fun decodeHtmlEntities(s: String): String = s
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
 
         /**
          * Pairs flag + argument tokens cleanly onto [YoutubeDLRequest] via addOption(flag, value)

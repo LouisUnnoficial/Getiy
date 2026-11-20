@@ -67,6 +67,21 @@ object FileShareHelper {
         runCatching { context.startActivity(intent) }
     }
 
+    fun openFileExternally(context: Context, path: String) {
+        val file = File(path)
+        if (!file.exists()) return
+        val uri = uriForFile(context, file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeTypeFor(file))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val chooser = Intent.createChooser(intent, file.name).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(chooser) }
+    }
+
     fun copyToClipboard(context: Context, label: String, text: String) {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
         cm.setPrimaryClip(ClipData.newPlainText(label, text))

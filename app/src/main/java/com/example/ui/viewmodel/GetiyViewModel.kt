@@ -4,11 +4,13 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.core.AppUpdateChecker
 import com.example.core.AudioPlaybackManager
 import com.example.core.AudioPlaybackState
 import com.example.core.FileShareHelper
 import com.example.core.GetiyHaptics
 import com.example.core.Links
+import com.example.core.UpdateCheckOutcome
 import com.example.data.db.AppDatabase
 import com.example.data.db.DownloadJobEntity
 import com.example.data.engine.EngineStatus
@@ -35,14 +37,14 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONObject
 import java.io.File
 
 sealed class FetchResult {
@@ -93,6 +95,7 @@ sealed class ReleaseCheckState {
         val name: String,
         val notes: String,
         val htmlUrl: String,
+        val apkDownloadUrl: String? = null,
     ) : ReleaseCheckState()
 
     data class Error(val message: String) : ReleaseCheckState()
@@ -105,7 +108,7 @@ class GetiyViewModel(application: Application) : AndroidViewModel(application) {
     val engine = GetiyEngine(appContext)
     private val db = AppDatabase.getInstance(appContext)
     val repository = DownloadRepository(appContext, db.downloadJobDao(), engine, settingsRepository)
-    private val httpClient = OkHttpClient()
+    private val updateChecker = AppUpdateChecker()
 
     private val _settingsLoaded = MutableStateFlow(false)
     val settingsLoaded: StateFlow<Boolean> = _settingsLoaded.asStateFlow()
@@ -128,14 +131,25 @@ class GetiyViewModel(application: Application) : AndroidViewModel(application) {
     val extractions: StateFlow<Map<String, ExtractionProgress>> = repository.extractions
     val audioState: StateFlow<AudioPlaybackState> = AudioPlaybackManager.state
 
-    val activeDownloadCount: StateFlow<Int> = jobs.combine(speeds) { list, _ ->
-        list.count { it.jobStatus.isActive }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    val activeDownloadCount: StateFlow<Int> = jobs
+        .map { list -> list.count { it.jobStatus.isActive } }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     private val _libraryRefreshNonce = MutableStateFlow(0)
-    val libraryItems: StateFlow<List<LibraryItem>> = combine(jobs, _libraryRefreshNonce) { list, _ ->
+    private val completedJobsFlow = jobs
+        .map { list -> list.filter { it.jobStatus == JobStatus.DONE } }
+        .distinctUntilChanged { old, new ->
+            old.size == new.size && old.indices.all { i ->
+                old[i].id == new[i].id && old[i].paths == new[i].paths && old[i].finishedAt == new[i].finishedAt
+            }
+        }
+
+    val libraryItems: StateFlow<List<LibraryItem>> = combine(completedJobsFlow, _libraryRefreshNonce) { list, _ ->
         buildLibraryItems(list)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val engineStatus: StateFlow<EngineStatus> = engine.engineStatus
 
@@ -160,16 +174,30 @@ class GetiyViewModel(application: Application) : AndroidViewModel(application) {
     private val _releaseCheck = MutableStateFlow<ReleaseCheckState>(ReleaseCheckState.Idle)
     val releaseCheck: StateFlow<ReleaseCheckState> = _releaseCheck.asStateFlow()
 
+    private val _updatePopupRelease = MutableStateFlow<ReleaseCheckState.Available?>(null)
+    val updatePopupRelease: StateFlow<ReleaseCheckState.Available?> = _updatePopupRelease.asStateFlow()
+
     private val seenClipboardKeys = mutableSetOf<String>()
     private var offerDismissJob: Job? = null
     private var toastDismissJob: Job? = null
     private var fetchJob: Job? = null
+    private var updateCheckJob: Job? = null
+    private var dismissedUpdateForSession = false
+    private var suppressAutoPopupUntilMs = 0L
 
     init {
         GetiyHaptics.init(appContext)
         viewModelScope.launch {
-            val status = engine.initializeEngines(force = false)
-            _engineVersion.value = status.ytDlpVersion ?: if (status.ytDlpReady) "bundled" else null
+            val status = engine.warmUpLightweight()
+            _engineVersion.value = status.ytDlpVersion
+        }
+        viewModelScope.launch {
+            engine.engineStatus.collect { status ->
+                val v = status.ytDlpVersion ?: if (status.ytDlpReady) "bundled" else null
+                if (v != null && _engineVersion.value != v) {
+                    _engineVersion.value = v
+                }
+            }
         }
         viewModelScope.launch {
             repository.completionEvents.collect { event ->
@@ -518,33 +546,86 @@ class GetiyViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setRingtone(uri: Uri): Boolean = engine.setDefaultRingtone(uri)
 
-    fun checkForGithubUpdates(currentVersion: String) {
-        _releaseCheck.value = ReleaseCheckState.Checking
-        viewModelScope.launch(Dispatchers.IO) {
-            val res = runCatching {
-                val req = Request.Builder()
-                    .url("https://api.github.com/repos/tpxlegend/Getiy/releases/latest")
-                    .header("Accept", "application/vnd.github+json")
-                    .header("User-Agent", "Getiy-Android/$currentVersion")
-                    .build()
-                httpClient.newCall(req).execute().use { resp ->
-                    if (resp.code == 404) return@use ReleaseCheckState.UpToDate(null)
-                    if (!resp.isSuccessful) throw IllegalStateException("GitHub returned HTTP ${resp.code}")
-                    val body = resp.body?.string().orEmpty()
-                    val obj = JSONObject(body)
-                    val tag = obj.optString("tag_name")
-                    val name = obj.optString("name")
-                    val notes = obj.optString("body")
-                    val htmlUrl = obj.optString("html_url", "https://github.com/tpxlegend/Getiy/releases/latest")
-                    val cleanTag = tag.removePrefix("v").trim()
-                    if (cleanTag.isBlank() || cleanTag == currentVersion.trim()) {
-                        ReleaseCheckState.UpToDate(tag.ifBlank { null })
-                    } else {
-                        ReleaseCheckState.Available(tag, name, notes, htmlUrl)
+    /**
+     * Automatically checks the GitHub repository's latest release whenever the app opens.
+     * If the release version matches the installed version, no popup is shown.
+     * If a newer release exists, displays the in-app Update Available popup.
+     */
+    fun checkForAppUpdateOnOpen(currentVersion: String) {
+        if (dismissedUpdateForSession) return
+        if (System.currentTimeMillis() < suppressAutoPopupUntilMs) return
+        if (updateCheckJob?.isActive == true) return
+
+        updateCheckJob = viewModelScope.launch(Dispatchers.IO) {
+            when (val outcome = updateChecker.checkForUpdate(currentVersion)) {
+                is UpdateCheckOutcome.UpdateAvailable -> {
+                    val available = ReleaseCheckState.Available(
+                        tag = outcome.release.tagName,
+                        name = outcome.release.releaseName,
+                        notes = outcome.release.releaseNotes,
+                        htmlUrl = outcome.release.htmlUrl,
+                        apkDownloadUrl = outcome.release.apkDownloadUrl,
+                    )
+                    _releaseCheck.value = available
+                    if (!dismissedUpdateForSession) {
+                        _updatePopupRelease.value = available
                     }
                 }
-            }.getOrElse { ReleaseCheckState.Error(it.message ?: "Couldn't reach GitHub") }
-            _releaseCheck.value = res
+                is UpdateCheckOutcome.UpToDate -> {
+                    _releaseCheck.value = ReleaseCheckState.UpToDate(outcome.latestTag)
+                    _updatePopupRelease.value = null
+                }
+                is UpdateCheckOutcome.Failed -> {
+                    // Stay silent during automatic background checks when offline or rate-limited.
+                }
+            }
+        }
+    }
+
+    /**
+     * Resets session dismissal when the app goes to background so reopening the app
+     * performs a fresh repository release check.
+     */
+    fun onAppBackgrounded() {
+        dismissedUpdateForSession = false
+    }
+
+    fun dismissUpdatePopup() {
+        dismissedUpdateForSession = true
+        _updatePopupRelease.value = null
+    }
+
+    fun onUpdateNowClicked() {
+        dismissedUpdateForSession = true
+        suppressAutoPopupUntilMs = System.currentTimeMillis() + 15_000L
+        _updatePopupRelease.value = null
+    }
+
+    fun checkForGithubUpdates(currentVersion: String) {
+        updateCheckJob?.cancel()
+        _releaseCheck.value = ReleaseCheckState.Checking
+        updateCheckJob = viewModelScope.launch(Dispatchers.IO) {
+            when (val outcome = updateChecker.checkForUpdate(currentVersion)) {
+                is UpdateCheckOutcome.UpdateAvailable -> {
+                    val available = ReleaseCheckState.Available(
+                        tag = outcome.release.tagName,
+                        name = outcome.release.releaseName,
+                        notes = outcome.release.releaseNotes,
+                        htmlUrl = outcome.release.htmlUrl,
+                        apkDownloadUrl = outcome.release.apkDownloadUrl,
+                    )
+                    _releaseCheck.value = available
+                    dismissedUpdateForSession = false
+                    _updatePopupRelease.value = available
+                }
+                is UpdateCheckOutcome.UpToDate -> {
+                    _releaseCheck.value = ReleaseCheckState.UpToDate(outcome.latestTag)
+                    _updatePopupRelease.value = null
+                }
+                is UpdateCheckOutcome.Failed -> {
+                    _releaseCheck.value = ReleaseCheckState.Error(outcome.message)
+                }
+            }
         }
     }
 

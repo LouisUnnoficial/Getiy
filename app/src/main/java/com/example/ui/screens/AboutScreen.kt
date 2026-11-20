@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
@@ -40,7 +41,9 @@ import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,10 +55,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.example.BuildConfig
 import com.example.R
 import com.example.core.FileShareHelper
@@ -71,6 +80,7 @@ import com.example.ui.theme.GetiyAzure
 import com.example.ui.theme.GetiyIce
 import com.example.ui.theme.GetiyMint
 import com.example.ui.theme.GetiyNavy
+import com.example.ui.theme.GetiyNavyDeep
 import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.viewmodel.ReleaseCheckState
 
@@ -155,6 +165,18 @@ fun AboutScreen(
             }
         }
 
+        // Highlighted Creator GitHub Profile Card
+        item(key = "about_creator_profile") {
+            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                PopSection(stringResource(R.string.about_creator_section))
+                CreatorProfileCard(
+                    onOpenProfile = {
+                        FileShareHelper.openExternalUrl(context, "https://github.com/tpxlegend")
+                    },
+                )
+            }
+        }
+
         // Release Check Card
         item(key = "about_updates") {
             Box(modifier = Modifier.padding(horizontal = 20.dp)) {
@@ -219,6 +241,201 @@ fun AboutScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CreatorProfileCard(
+    onOpenProfile: () -> Unit,
+) {
+    val context = LocalContext.current
+    val cardShape = RoundedCornerShape(24.dp)
+    val cardGradient = Brush.linearGradient(
+        colors = listOf(
+            GetiyNavy,
+            Color(0xFF172953),
+            Color(0xFF1F366B),
+        ),
+    )
+
+    Surface(
+        onClick = {
+            GetiyHaptics.selection()
+            onOpenProfile()
+        },
+        shape = cardShape,
+        color = Color.Transparent,
+        border = BorderStroke(1.2.dp, GetiyMint.copy(alpha = 0.42f)),
+        tonalElevation = 4.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .minimumInteractiveComponentSize()
+            .testTag("about_github_profile_card"),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(cardGradient, cardShape)
+                .drawBehind {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                GetiyAzure.copy(alpha = 0.24f),
+                                Color.Transparent,
+                            ),
+                            center = Offset(size.width * 0.92f, size.height * 0.15f),
+                            radius = size.width * 0.55f,
+                        ),
+                        center = Offset(size.width * 0.92f, size.height * 0.15f),
+                        radius = size.width * 0.55f,
+                    )
+                }
+                .padding(18.dp),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // GitHub Avatar with luminous ring
+                    Box(
+                        modifier = Modifier
+                            .size(66.dp)
+                            .clip(CircleShape)
+                            .background(GetiyAccentBrush)
+                            .padding(2.dp)
+                            .clip(CircleShape)
+                            .background(GetiyNavyDeep),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        SubcomposeAsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data("https://github.com/tpxlegend.png?size=240")
+                                .size(144, 144)
+                                .allowRgb565(true)
+                                .crossfade(false)
+                                .build(),
+                            contentDescription = stringResource(R.string.about_creator_avatar_cd),
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                            loading = {
+                                CreatorAvatarFallback()
+                            },
+                            error = {
+                                CreatorAvatarFallback()
+                            },
+                        )
+                    }
+
+                    Spacer(Modifier.width(14.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(PopPillShape)
+                                .background(GetiyMint.copy(alpha = 0.16f))
+                                .border(1.dp, GetiyMint.copy(alpha = 0.36f), PopPillShape)
+                                .padding(horizontal = 9.dp, vertical = 3.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.about_creator_badge),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = GetiyMint,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.8.sp,
+                                ),
+                                maxLines = 1,
+                            )
+                        }
+
+                        Text(
+                            text = stringResource(R.string.about_creator_name),
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                color = GetiyIce,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 0.6.sp,
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Code,
+                                contentDescription = null,
+                                tint = GetiyAzure,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                text = stringResource(R.string.about_creator_handle),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = GetiyMint.copy(alpha = 0.86f),
+                                    fontWeight = FontWeight.Medium,
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+
+                // Highlighted View Profile CTA bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(GetiyAccentBrush)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.about_creator_cta),
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            color = GetiyNavyDeep,
+                            fontWeight = FontWeight.ExtraBold,
+                        ),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Rounded.OpenInNew,
+                        contentDescription = null,
+                        tint = GetiyNavyDeep,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreatorAvatarFallback() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF172850)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "TP",
+            style = MaterialTheme.typography.titleMedium.copy(
+                color = GetiyMint,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.sp,
+            ),
+        )
     }
 }
 

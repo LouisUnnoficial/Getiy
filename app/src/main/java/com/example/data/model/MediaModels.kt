@@ -274,13 +274,12 @@ object MediaHelpers {
         trimEnd: Double? = null,
     ): List<String> {
         val args = mutableListOf<String>()
-        val h = if (maxHeight == null) "" else "[height<=$maxHeight]"
 
         when (mode) {
             DownloadMode.SUBTITLES_ONLY -> args.add("--skip-download")
-            DownloadMode.VIDEO -> args.addAll(videoArgs(h, container))
+            DownloadMode.VIDEO -> args.addAll(videoArgs(maxHeight, container))
             DownloadMode.VIDEO_AND_AUDIO -> {
-                args.addAll(videoArgs(h, container))
+                args.addAll(videoArgs(maxHeight, container))
                 args.addAll(extractArgs(audioFormat))
                 args.add("-k")
             }
@@ -317,12 +316,24 @@ object MediaHelpers {
         return args
     }
 
-    private fun videoArgs(h: String, container: String): List<String> = buildList {
+    private fun videoArgs(maxHeight: Int?, container: String): List<String> = buildList {
         add("-f")
-        add("bv*$h+ba/b$h/bv*+ba/b")
+        if (maxHeight == null) {
+            add("bv*+ba/b")
+        } else {
+            val h = "[height<=$maxHeight]"
+            add("bv*$h+ba/b$h/bv*+ba/b")
+        }
         if (container == "mp4") {
             add("-S")
-            add("vcodec:h264,acodec:aac")
+            if (maxHeight != null && maxHeight <= 1080) {
+                // Keep resolution priority first so 1080p isn't downgraded, then prefer H.264 + AAC
+                add("res,vcodec:h264,acodec:aac")
+            } else {
+                // For 1440p/4K/8K, YouTube & modern sites use VP9/AV1/HEVC (no H.264 above 1080p).
+                // Sort by resolution first, then prefer AAC audio and MP4-friendly video codecs.
+                add("res,acodec:aac,ext:mp4:m4a")
+            }
         }
         add("--merge-output-format")
         add(container)
@@ -393,21 +404,33 @@ object MediaHelpers {
 
         val jsonStart = jsonText.indexOf('{')
         val cleanJson = if (jsonStart >= 0) jsonText.substring(jsonStart) else jsonText
-        val obj = JSONObject(cleanJson)
+        val rootObj = JSONObject(cleanJson)
 
-        val type = obj.optString("_type", "")
-        val entriesArr = obj.optJSONArray("entries")
-        val isPlaylist = type == "playlist" || (entriesArr != null && entriesArr.length() > 1)
+        val rootEntriesArr = rootObj.optJSONArray("entries")
+        val nonNullEntries = buildList {
+            if (rootEntriesArr != null) {
+                for (i in 0 until rootEntriesArr.length()) {
+                    rootEntriesArr.optJSONObject(i)?.let { add(it) }
+                }
+            }
+        }
+
+        // Many extractors (Instagram, X/Twitter, Reddit, Pinterest, TikTok) wrap a single video post
+        // inside a 1-item `entries` array. Unwrap it so formats, title, and preview work seamlessly.
+        val singleEntry = if (nonNullEntries.size == 1) nonNullEntries.first() else null
+        val obj = singleEntry ?: rootObj
+        val isPlaylist = nonNullEntries.size > 1
         val site = obj.optString("extractor_key").takeIf { it.isNotBlank() }
+            ?: rootObj.optString("extractor_key").takeIf { it.isNotBlank() }
             ?: obj.optString("extractor").takeIf { it.isNotBlank() }
+            ?: rootObj.optString("extractor").takeIf { it.isNotBlank() }
 
         val entries = mutableListOf<PlaylistEntry>()
-        if (entriesArr != null) {
-            for (i in 0 until entriesArr.length()) {
-                val e = entriesArr.optJSONObject(i) ?: continue
+        if (isPlaylist) {
+            nonNullEntries.forEachIndexed { i, e ->
                 val entryUrl = e.optString("webpage_url").takeIf { it.isNotBlank() }
                     ?: e.optString("url").takeIf { it.isNotBlank() }
-                    ?: continue
+                    ?: return@forEachIndexed
                 val resolvedUrl = if (entryUrl.startsWith("http")) {
                     entryUrl
                 } else if (site.equals("Youtube", ignoreCase = true) || requestedUrl.contains("youtu")) {
@@ -428,41 +451,78 @@ object MediaHelpers {
             }
         }
 
+        fun parseFormatObject(f: JSONObject): MediaFormat {
+            val ext = f.optString("ext", "mp4").ifBlank { "mp4" }
+            val extLower = ext.lowercase(Locale.US)
+            val isKnownAudioExt = extLower in audioExts
+            val isKnownImageExt = extLower in setOf("jpg", "jpeg", "png", "webp", "gif", "mhtml")
+
+            // yt-dlp often omits vcodec/acodec (null or missing) for TikTok, Instagram, X, Pinterest,
+            // Reddit, and generic muxed MP4 streams. Treat explicit "none" as absent, but infer
+            // video/audio presence when the field is simply omitted.
+            val vcodecPresent = !f.isNull("vcodec") && f.optString("vcodec").isNotBlank()
+            val acodecPresent = !f.isNull("acodec") && f.optString("acodec").isNotBlank()
+            val vcodec = if (vcodecPresent) f.optString("vcodec") else ""
+            val acodec = if (acodecPresent) f.optString("acodec") else ""
+            val height = f.optInt("height", -1).takeIf { it > 0 }
+            val width = f.optInt("width", -1).takeIf { it > 0 }
+            val hasVideo = when {
+                isKnownImageExt -> false
+                vcodecPresent -> !vcodec.equals("none", ignoreCase = true)
+                height != null || width != null -> true
+                else -> !isKnownAudioExt
+            }
+            val hasAudio = when {
+                isKnownImageExt -> false
+                acodecPresent -> !acodec.equals("none", ignoreCase = true)
+                isKnownAudioExt -> true
+                else -> !vcodecPresent // muxed streams with omitted codecs usually carry audio
+            }
+
+            val fUrl = f.optString("url").takeIf { it.isNotBlank() }
+            val bytes = f.optLong("filesize", -1L).takeIf { it > 0 }
+                ?: f.optLong("filesize_approx", -1L).takeIf { it > 0 }
+            val headers = mutableMapOf<String, String>()
+            f.optJSONObject("http_headers")?.let { hObj ->
+                hObj.keys().forEach { k ->
+                    val v = hObj.optString(k)
+                    if (v.isNotBlank()) headers[k] = v
+                }
+            }
+            if (fUrl != null && !headers.containsKey("Cookie")) {
+                cookiesForUrl(cookieJar, fUrl)?.let { headers["Cookie"] = it }
+            }
+            return MediaFormat(
+                formatId = f.optString("format_id").ifBlank { "default" },
+                ext = ext,
+                height = height,
+                bytes = bytes,
+                hasVideo = hasVideo,
+                hasAudio = hasAudio,
+                url = fUrl,
+                protocol = f.optString("protocol").takeIf { it.isNotBlank() },
+                headers = headers,
+            )
+        }
+
         val formats = mutableListOf<MediaFormat>()
-        val formatsArr = obj.optJSONArray("formats")
+        val formatsArr = obj.optJSONArray("formats") ?: rootObj.optJSONArray("formats")
         if (formatsArr != null) {
             for (i in 0 until formatsArr.length()) {
                 val f = formatsArr.optJSONObject(i) ?: continue
-                val vcodec = f.optString("vcodec", "none")
-                val acodec = f.optString("acodec", "none")
-                val hasVideo = vcodec.isNotBlank() && vcodec != "none"
-                val hasAudio = acodec.isNotBlank() && acodec != "none"
-                val fUrl = f.optString("url").takeIf { it.isNotBlank() }
-                val bytes = f.optLong("filesize", -1L).takeIf { it > 0 }
-                    ?: f.optLong("filesize_approx", -1L).takeIf { it > 0 }
-                val headers = mutableMapOf<String, String>()
-                f.optJSONObject("http_headers")?.let { hObj ->
-                    hObj.keys().forEach { k ->
-                        val v = hObj.optString(k)
-                        if (v.isNotBlank()) headers[k] = v
-                    }
+                val parsed = parseFormatObject(f)
+                if (parsed.hasVideo || parsed.hasAudio) {
+                    formats.add(parsed)
                 }
-                if (fUrl != null && !headers.containsKey("Cookie")) {
-                    cookiesForUrl(cookieJar, fUrl)?.let { headers["Cookie"] = it }
-                }
-                formats.add(
-                    MediaFormat(
-                        formatId = f.optString("format_id"),
-                        ext = f.optString("ext", "mp4"),
-                        height = f.optInt("height", -1).takeIf { it > 0 },
-                        bytes = bytes,
-                        hasVideo = hasVideo,
-                        hasAudio = hasAudio,
-                        url = fUrl,
-                        protocol = f.optString("protocol").takeIf { it.isNotBlank() },
-                        headers = headers,
-                    ),
-                )
+            }
+        }
+
+        // Some extractors (Pinterest, Imgur, direct MP4/HLS, generic HTML5) expose a direct `url`
+        // on the root object with no `formats` array. Synthesize a format so options & preview work.
+        if (formats.isEmpty()) {
+            val directUrl = obj.optString("url").takeIf { it.startsWith("http", ignoreCase = true) }
+            if (directUrl != null) {
+                formats.add(parseFormatObject(obj))
             }
         }
 
@@ -479,20 +539,36 @@ object MediaHelpers {
                 subtitles.add(SubtitleTrack(lang = lang, name = label, isAuto = isAuto))
             }
         }
-        collectSubs(obj.optJSONObject("subtitles"), isAuto = false)
-        collectSubs(obj.optJSONObject("automatic_captions"), isAuto = true)
+        collectSubs(obj.optJSONObject("subtitles") ?: rootObj.optJSONObject("subtitles"), isAuto = false)
+        collectSubs(
+            obj.optJSONObject("automatic_captions") ?: rootObj.optJSONObject("automatic_captions"),
+            isAuto = true,
+        )
+
+        val resolvedPageUrl = obj.optString("webpage_url").takeIf { it.isNotBlank() }
+            ?: rootObj.optString("webpage_url").takeIf { it.isNotBlank() }
+            ?: obj.optString("original_url").takeIf { it.isNotBlank() }
+            ?: requestedUrl
 
         return MediaInfo(
-            url = obj.optString("webpage_url").takeIf { it.isNotBlank() } ?: requestedUrl,
-            title = obj.optString("title").takeIf { it.isNotBlank() } ?: "Untitled media",
-            id = obj.optString("id").takeIf { it.isNotBlank() },
+            url = resolvedPageUrl,
+            title = obj.optString("title").takeIf { it.isNotBlank() }
+                ?: rootObj.optString("title").takeIf { it.isNotBlank() }
+                ?: "Untitled media",
+            id = obj.optString("id").takeIf { it.isNotBlank() }
+                ?: rootObj.optString("id").takeIf { it.isNotBlank() },
             thumbnail = obj.optString("thumbnail").takeIf { it.isNotBlank() }
                 ?: firstThumbUrl(obj.optJSONArray("thumbnails"))
+                ?: rootObj.optString("thumbnail").takeIf { it.isNotBlank() }
+                ?: firstThumbUrl(rootObj.optJSONArray("thumbnails"))
                 ?: entries.firstOrNull()?.thumbnail,
             uploader = obj.optString("uploader").takeIf { it.isNotBlank() }
-                ?: obj.optString("channel").takeIf { it.isNotBlank() },
+                ?: obj.optString("channel").takeIf { it.isNotBlank() }
+                ?: rootObj.optString("uploader").takeIf { it.isNotBlank() }
+                ?: rootObj.optString("channel").takeIf { it.isNotBlank() },
             site = site,
-            duration = obj.optDouble("duration").takeIf { !it.isNaN() && it > 0 },
+            duration = obj.optDouble("duration").takeIf { !it.isNaN() && it > 0 }
+                ?: rootObj.optDouble("duration").takeIf { !it.isNaN() && it > 0 },
             isPlaylist = isPlaylist,
             entryCount = entries.size,
             formats = formats,

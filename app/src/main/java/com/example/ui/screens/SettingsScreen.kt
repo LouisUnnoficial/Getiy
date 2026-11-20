@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -423,18 +424,64 @@ fun SettingsScreen(
                     SettingsDivider()
                     SettingsRow(
                         label = "Parallel downloads",
-                        value = if (settings.concurrency == 1) "1 at a time" else "${settings.concurrency} at once",
+                        value = when {
+                            settings.liteMode -> "1 at a time (Lite Mode)"
+                            settings.concurrency == 1 -> "1 at a time"
+                            else -> "${settings.concurrency} at once"
+                        },
                         onClick = { activePicker = SettingsPicker.CONCURRENCY },
                     )
                 }
             }
         }
 
-        // Storage & Engine Diagnostics
+        // Performance, Storage & Native Engines
         item(key = "settings_storage") {
             Column {
-                PopSection("Storage & Native Engines")
+                PopSection("Performance & Native Engines")
                 SettingsGroup {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.settings_lite_mode_title),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    color = pop.text,
+                                    fontWeight = FontWeight.Bold,
+                                ),
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = stringResource(R.string.settings_lite_mode_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Switch(
+                            checked = settings.liteMode,
+                            onCheckedChange = { enabled ->
+                                GetiyHaptics.selection()
+                                onUpdateSettings {
+                                    it.copy(
+                                        liteMode = enabled,
+                                        concurrency = if (enabled) 1 else it.concurrency,
+                                    )
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = pop.onStrong,
+                                checkedTrackColor = pop.strong,
+                                uncheckedThumbColor = pop.muted,
+                                uncheckedTrackColor = pop.soft,
+                            ),
+                            modifier = Modifier.testTag("settings_lite_mode_switch"),
+                        )
+                    }
+                    SettingsDivider()
                     SettingsRow(
                         label = "Vault footprint",
                         value = MediaHelpers.formatBytes(storageBytes) ?: "0 KB",
@@ -446,9 +493,13 @@ fun SettingsScreen(
                         detail = when {
                             engineStatus.initializing -> "Initializing Python & extractor bundle…"
                             engineStatus.ytDlpReady -> "Version ${engineStatus.ytDlpVersion ?: "bundled"} · 1,800+ sites"
+                            engineStatus.standby && engineStatus.error == null -> {
+                                val ver = engineStatus.ytDlpVersion?.let { "v$it · " } ?: ""
+                                "${ver}Ready on demand (saves startup RAM)"
+                            }
                             else -> "Unavailable"
                         },
-                        ready = engineStatus.ytDlpReady,
+                        ready = engineStatus.ytDlpReady || (engineStatus.standby && engineStatus.error == null),
                         initializing = engineStatus.initializing,
                     )
                     SettingsDivider()
@@ -460,16 +511,18 @@ fun SettingsScreen(
                                 val ver = engineStatus.ffmpegVersion?.let { "v$it · " } ?: ""
                                 "${ver}Merging, audio extraction & ringtones"
                             }
+                            engineStatus.standby && engineStatus.error == null ->
+                                "Loads on demand when downloading or trimming"
                             else -> "Unavailable"
                         },
-                        ready = engineStatus.ffmpegReady,
+                        ready = engineStatus.ffmpegReady || (engineStatus.standby && engineStatus.error == null),
                         initializing = engineStatus.initializing,
                     )
                     SettingsDivider()
                     EngineStatusRow(
                         name = "youtubedl-android",
-                        detail = "Runtime v${engineStatus.youtubedlAndroidVersion} · Bundled native APK libs",
-                        ready = engineStatus.allCoreReady,
+                        detail = "Runtime v${engineStatus.youtubedlAndroidVersion} · On-demand native libs",
+                        ready = engineStatus.allCoreReady || (engineStatus.standby && engineStatus.error == null),
                         initializing = engineStatus.initializing,
                     )
                     SettingsDivider()
@@ -489,20 +542,20 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
-                                text = if (engineStatus.aria2cReady) {
-                                    "Multi-connection downloads for full files"
-                                } else if (engineStatus.initializing) {
-                                    "Checking Aria2c module…"
-                                } else {
-                                    "Module not available on this device"
+                                text = when {
+                                    engineStatus.aria2cReady -> "Multi-connection downloads for full files"
+                                    engineStatus.initializing -> "Checking Aria2c module…"
+                                    engineStatus.standby -> "Loads only when enabled (saves RAM)"
+                                    else -> "Module not available on this device"
                                 },
                                 style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
                             )
                         }
                         Spacer(Modifier.width(10.dp))
+                        val ariaSelectable = engineStatus.aria2cReady || engineStatus.standby
                         Switch(
-                            checked = settings.useAria2c && engineStatus.aria2cReady,
-                            enabled = engineStatus.aria2cReady,
+                            checked = settings.useAria2c && ariaSelectable,
+                            enabled = ariaSelectable,
                             onCheckedChange = { enabled ->
                                 GetiyHaptics.selection()
                                 onUpdateSettings { it.copy(useAria2c = enabled) }

@@ -9,6 +9,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -42,9 +44,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import com.example.core.FileShareHelper
 import com.example.core.Links
 import com.example.data.model.AppThemeMode
 import com.example.data.model.JobStatus
@@ -56,6 +60,7 @@ import com.example.ui.components.GetiyTopNavBar
 import com.example.ui.components.PopConfettiOverlay
 import com.example.ui.components.PopTabItem
 import com.example.ui.components.PopToastHost
+import com.example.ui.components.UpdateAvailableDialog
 import com.example.ui.screens.AboutScreen
 import com.example.ui.screens.AudioPlayerScreen
 import com.example.ui.screens.DownloadDetailScreen
@@ -153,6 +158,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        viewModel.checkForAppUpdateOnOpen(BuildConfig.VERSION_NAME)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        viewModel.onAppBackgrounded()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -230,6 +245,8 @@ private fun GetiyAppRoot(
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val audioState by viewModel.audioState.collectAsStateWithLifecycle()
     val releaseCheck by viewModel.releaseCheck.collectAsStateWithLifecycle()
+    val updatePopupRelease by viewModel.updatePopupRelease.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     val hasMiniPlayer = audioState.current != null
     val hasOverlayAboveBottom = hasMiniPlayer || clipboardOffer != null
@@ -239,12 +256,18 @@ private fun GetiyAppRoot(
         else -> 0
     }
 
-    val navTabs = listOf(
-        PopTabItem(Icons.Rounded.Home, "Home", testTag = "tab_home"),
-        PopTabItem(Icons.Rounded.Download, "Queue", badge = activeCount, testTag = "tab_downloads"),
-        PopTabItem(Icons.Rounded.VideoLibrary, "Vault", testTag = "tab_library"),
-        PopTabItem(Icons.Rounded.Tune, "Settings", testTag = "tab_settings"),
-    )
+    val navTabs = remember(activeCount) {
+        listOf(
+            PopTabItem(Icons.Rounded.Home, "Home", testTag = "tab_home"),
+            PopTabItem(Icons.Rounded.Download, "Queue", badge = activeCount, testTag = "tab_downloads"),
+            PopTabItem(Icons.Rounded.VideoLibrary, "Vault", testTag = "tab_library"),
+            PopTabItem(Icons.Rounded.Tune, "Settings", testTag = "tab_settings"),
+        )
+    }
+    val storageBytes = remember(libraryItems) { libraryItems.sumOf { it.sizeBytes } }
+    val failedCount = remember(jobs) {
+        jobs.count { it.jobStatus == JobStatus.FAILED || it.jobStatus == JobStatus.CANCELED }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(if (settingsLoaded) pop.bg else GetiyNavy)) {
         if (!settingsLoaded) {
@@ -261,7 +284,13 @@ private fun GetiyAppRoot(
                     Box(modifier = contentModifier) {
                         AnimatedContent(
                             targetState = selectedTab,
-                            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(150)) },
+                            transitionSpec = {
+                                if (settings.liteMode) {
+                                    EnterTransition.None togetherWith ExitTransition.None
+                                } else {
+                                    fadeIn(tween(150)) togetherWith fadeOut(tween(120))
+                                }
+                            },
                             label = "tabContent",
                         ) { tab ->
                             when (tab) {
@@ -312,10 +341,8 @@ private fun GetiyAppRoot(
                                 else -> SettingsScreen(
                                     settings = settings,
                                     engineStatus = engineStatus,
-                                    storageBytes = libraryItems.sumOf { it.sizeBytes },
-                                    failedCount = jobs.count {
-                                        it.jobStatus == JobStatus.FAILED || it.jobStatus == JobStatus.CANCELED
-                                    },
+                                    storageBytes = storageBytes,
+                                    failedCount = failedCount,
                                     extraBottomPadding = extraBottom,
                                     onUpdateSettings = viewModel::updateSettings,
                                     onReinitEngines = viewModel::reinitializeEngines,
@@ -335,14 +362,15 @@ private fun GetiyAppRoot(
                         ) {
                             AnimatedVisibility(
                                 visible = clipboardOffer != null,
-                                enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 2 },
-                                exit = fadeOut(tween(180)) + slideOutVertically(tween(200)) { it / 2 },
+                                enter = fadeIn(tween(180)) + slideInVertically(tween(200)) { it / 2 },
+                                exit = fadeOut(tween(140)) + slideOutVertically(tween(160)) { it / 2 },
                             ) {
                                 clipboardOffer?.let { offer ->
                                     ClipboardOfferCard(
                                         offer = offer,
                                         onFetchOffer = viewModel::fetchClipboardOffer,
                                         onDismiss = viewModel::dismissClipboardOffer,
+                                        liteMode = settings.liteMode,
                                     )
                                 }
                             }
@@ -504,10 +532,25 @@ private fun GetiyAppRoot(
                     onDismiss = onCloseRingtone,
                 )
             }
+
+            updatePopupRelease?.let { release ->
+                UpdateAvailableDialog(
+                    currentVersion = BuildConfig.VERSION_NAME,
+                    release = release,
+                    onUpdateNow = {
+                        viewModel.onUpdateNowClicked()
+                        FileShareHelper.openExternalUrl(context, release.htmlUrl)
+                    },
+                    onMaybeLater = viewModel::dismissUpdatePopup,
+                )
+            }
         }
 
-        // Top confetti celebration & toast overlay
-        PopConfettiOverlay(triggerCount = confettiCount)
+        // Top confetti celebration & toast overlay (confetti disabled in Lite Mode to save GPU)
+        PopConfettiOverlay(
+            triggerCount = confettiCount,
+            enabled = !settings.liteMode,
+        )
         PopToastHost(
             message = toast,
             onDismiss = viewModel::dismissToast,
