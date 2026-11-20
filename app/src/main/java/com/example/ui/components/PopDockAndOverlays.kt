@@ -73,7 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.core.Links
 import com.example.ui.theme.GetiyAccentBrush
 import com.example.ui.theme.GetiyAzure
@@ -82,7 +82,7 @@ import com.example.ui.theme.GetiyMint
 import com.example.ui.theme.GetiyNavy
 import com.example.ui.theme.GetiyNavyDeep
 import com.example.ui.theme.GetiyPeriwinkle
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.theme.PopError
 import com.example.ui.viewmodel.ClipboardOfferState
 import com.example.ui.viewmodel.PopToastMessage
@@ -109,7 +109,7 @@ fun GetiyTopNavBar(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val containerBg = if (pop.isDark) Color(0xF50E1935) else Color(0xF5F4F7FC)
     val railBg = if (pop.isDark) Color(0xFF152345) else Color(0xFFE7EEF8)
     val railBorder = if (pop.isDark) Color(0xFF263A6A) else Color(0xFFD2DDF0)
@@ -196,7 +196,7 @@ fun GetiyTopNavBar(
                             .testTag(tab.testTag)
                             .clickable {
                                 if (!active) {
-                                    GrabHaptics.selection()
+                                    GetiyHaptics.selection()
                                     onSelect(idx)
                                 }
                             },
@@ -254,7 +254,7 @@ fun GetiySideRail(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val railBg = if (pop.isDark) Color(0xFF132245) else Color(0xFFE9F1FC)
     Column(
         modifier = modifier
@@ -288,7 +288,7 @@ fun GetiySideRail(
                     .testTag(tab.testTag)
                     .clickable {
                         if (!active) {
-                            GrabHaptics.selection()
+                            GetiyHaptics.selection()
                             onSelect(idx)
                         }
                     }
@@ -334,11 +334,11 @@ fun GetiySideRail(
 @Composable
 fun ClipboardOfferCard(
     offer: ClipboardOfferState,
-    onGrab: () -> Unit,
+    onFetchOffer: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pulse = rememberInfiniteTransition(label = "grabPulse")
+    val pulse = rememberInfiniteTransition(label = "getiyPulse")
     val scale by pulse.animateFloat(
         initialValue = 1f,
         targetValue = 1.04f,
@@ -394,14 +394,14 @@ fun ClipboardOfferCard(
             }
             Surface(
                 onClick = {
-                    GrabHaptics.light()
-                    onGrab()
+                    GetiyHaptics.light()
+                    onFetchOffer()
                 },
                 shape = RoundedCornerShape(12.dp),
                 color = Color.Transparent,
                 modifier = Modifier
                     .scale(scale)
-                    .testTag("grab_offer_button"),
+                    .testTag("getiy_offer_button"),
             ) {
                 Row(
                     modifier = Modifier

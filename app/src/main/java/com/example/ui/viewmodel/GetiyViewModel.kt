@@ -7,12 +7,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.core.AudioPlaybackManager
 import com.example.core.AudioPlaybackState
 import com.example.core.FileShareHelper
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.core.Links
 import com.example.data.db.AppDatabase
 import com.example.data.db.DownloadJobEntity
 import com.example.data.engine.EngineStatus
-import com.example.data.engine.GrabEngine
+import com.example.data.engine.GetiyEngine
 import com.example.data.model.DownloadMode
 import com.example.data.model.JobStatus
 import com.example.data.model.LibraryItem
@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -97,20 +98,25 @@ sealed class ReleaseCheckState {
     data class Error(val message: String) : ReleaseCheckState()
 }
 
-class GrabViewModel(application: Application) : AndroidViewModel(application) {
+class GetiyViewModel(application: Application) : AndroidViewModel(application) {
 
     private val appContext = application.applicationContext
     val settingsRepository = SettingsRepository(appContext)
-    val engine = GrabEngine(appContext)
+    val engine = GetiyEngine(appContext)
     private val db = AppDatabase.getInstance(appContext)
     val repository = DownloadRepository(appContext, db.downloadJobDao(), engine, settingsRepository)
     private val httpClient = OkHttpClient()
 
-    val settings: StateFlow<AppSettings> = settingsRepository.settingsFlow.stateIn(
-        viewModelScope,
-        SharingStarted.Eagerly,
-        AppSettings(),
-    )
+    private val _settingsLoaded = MutableStateFlow(false)
+    val settingsLoaded: StateFlow<Boolean> = _settingsLoaded.asStateFlow()
+
+    val settings: StateFlow<AppSettings> = settingsRepository.settingsFlow
+        .onEach { _settingsLoaded.value = true }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            AppSettings(),
+        )
 
     val jobs: StateFlow<List<DownloadJobEntity>> = repository.jobsFlow.stateIn(
         viewModelScope,
@@ -160,7 +166,7 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
     private var fetchJob: Job? = null
 
     init {
-        GrabHaptics.init(appContext)
+        GetiyHaptics.init(appContext)
         viewModelScope.launch {
             val status = engine.initializeEngines(force = false)
             _engineVersion.value = status.ytDlpVersion ?: if (status.ytDlpReady) "bundled" else null
@@ -168,12 +174,12 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.completionEvents.collect { event ->
                 if (event.success) {
-                    GrabHaptics.success()
+                    GetiyHaptics.success()
                     _confettiCounter.update { it + 1 }
                     showToast("Saved", detail = event.title)
                     refreshLibrary()
                 } else {
-                    GrabHaptics.error()
+                    GetiyHaptics.error()
                     showToast("Download failed", detail = event.title, isError = true)
                 }
             }
@@ -182,7 +188,7 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectTab(index: Int) {
         if (_selectedTab.value != index) {
-            GrabHaptics.selection()
+            GetiyHaptics.selection()
             _selectedTab.value = index
         }
     }
@@ -208,10 +214,10 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
             val status = engine.initializeEngines(force = true)
             _engineVersion.value = status.ytDlpVersion ?: if (status.ytDlpReady) "bundled" else null
             if (status.allCoreReady) {
-                GrabHaptics.success()
+                GetiyHaptics.success()
                 showToast("Engines ready", detail = status.summaryLabel)
             } else {
-                GrabHaptics.error()
+                GetiyHaptics.error()
                 showToast("Engine check failed", detail = status.error ?: "Could not initialize", isError = true)
             }
         }
@@ -238,7 +244,7 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
         _clipboardOffer.value = null
     }
 
-    fun grabClipboardOffer() {
+    fun fetchClipboardOffer() {
         val offer = _clipboardOffer.value ?: return
         dismissClipboardOffer()
         selectTab(0)
@@ -284,7 +290,7 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     val opts = info.optionsFor(defaultMode)
                     val defaultIdx = pickDefaultQualityIndex(opts, s.maxHeight)
-                    GrabHaptics.light()
+                    GetiyHaptics.light()
                     val isPlaylist = info.isPlaylist && info.entries.isNotEmpty()
                     _fetchState.update {
                         it.copy(
@@ -299,7 +305,7 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 .onFailure { err ->
-                    GrabHaptics.error()
+                    GetiyHaptics.error()
                     _fetchState.update {
                         it.copy(
                             result = FetchResult.Error(
@@ -390,7 +396,7 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
                 subtitles = state.subtitles,
                 trim = state.trim,
             )
-            GrabHaptics.medium()
+            GetiyHaptics.medium()
             showToast("Added to downloads", detail = info.title)
             _fetchState.update { it.copy(showFormatSheet = false) }
             _selectedTab.value = 1
@@ -424,7 +430,7 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
                     audioFormat = s.audioFormat,
                 )
             }
-            GrabHaptics.medium()
+            GetiyHaptics.medium()
             val label = if (sorted.size == 1) "Added 1 download" else "Added ${sorted.size} downloads"
             showToast(label, detail = info.title)
             _fetchState.update { it.copy(showPlaylistSheet = false) }
@@ -473,7 +479,7 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
             }
             refreshLibrary()
             withContext(Dispatchers.Main) {
-                GrabHaptics.success()
+                GetiyHaptics.success()
                 val n = paths.size
                 showToast(
                     title = if (failed == 0) "Deleted $n" else "Deleted ${n - failed}, $failed failed",

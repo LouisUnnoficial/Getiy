@@ -64,7 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.core.FileShareHelper
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.data.model.LibraryItem
 import com.example.data.model.LibraryKind
 import com.example.data.model.LibrarySort
@@ -78,7 +78,7 @@ import com.example.ui.theme.GetiyIce
 import com.example.ui.theme.GetiyMint
 import com.example.ui.theme.GetiyNavy
 import com.example.ui.theme.GetiyNavyDeep
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.theme.PopError
 import java.io.File
 
@@ -95,7 +95,7 @@ fun LibraryScreen(
     onOpenDetail: (String) -> Unit,
     onDeleteSelected: (Set<String>) -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val context = LocalContext.current
 
     var selectedKind by remember { mutableStateOf<LibraryKind?>(null) }
@@ -141,7 +141,7 @@ fun LibraryScreen(
     }
 
     fun toggleSelect(path: String) {
-        GrabHaptics.selection()
+        GetiyHaptics.selection()
         pickedPaths = if (path in pickedPaths) pickedPaths - path else pickedPaths + path
     }
 
@@ -271,7 +271,7 @@ fun LibraryScreen(
                                         )
                                     },
                                     onClick = {
-                                        GrabHaptics.selection()
+                                        GetiyHaptics.selection()
                                         onSortChange(option)
                                         showSortMenu = false
                                     },
@@ -346,7 +346,7 @@ fun LibraryScreen(
                     FilterChip(
                         selected = selectedKind == null,
                         onClick = {
-                            GrabHaptics.selection()
+                            GetiyHaptics.selection()
                             selectedKind = null
                         },
                         label = { Text("All", fontWeight = FontWeight.Bold) },
@@ -358,7 +358,7 @@ fun LibraryScreen(
                         FilterChip(
                             selected = selectedKind == k,
                             onClick = {
-                                GrabHaptics.selection()
+                                GetiyHaptics.selection()
                                 selectedKind = if (selectedKind == k) null else k
                             },
                             label = { Text(k.label, fontWeight = FontWeight.Bold) },
@@ -370,7 +370,7 @@ fun LibraryScreen(
                     FilterChip(
                         selected = groupBySite,
                         onClick = {
-                            GrabHaptics.selection()
+                            GetiyHaptics.selection()
                             onGroupChange(!groupBySite)
                         },
                         label = { Text("By site", fontWeight = FontWeight.Bold) },
@@ -510,7 +510,7 @@ private fun VaultPosterCard(
     onOpenDetail: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val ext = File(item.path).extension.uppercase()
 
     Box(
@@ -581,7 +581,7 @@ private fun VaultPosterCard(
         } else {
             IconButton(
                 onClick = {
-                    GrabHaptics.selection()
+                    GetiyHaptics.selection()
                     onOpenDetail()
                 },
                 modifier = Modifier
@@ -650,7 +650,7 @@ private fun VaultListRow(
     onOpenDetail: () -> Unit,
     onShare: () -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val ext = File(item.path).extension.uppercase()
 
     Row(

@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
+import com.example.core.Links
 import com.example.data.model.MediaHelpers
 import com.example.data.model.MediaInfo
 import com.example.data.settings.AppSettings
@@ -53,7 +54,7 @@ data class EngineStatus(
     val ffmpegReady: Boolean = false,
     val ffmpegVersion: String? = null,
     val aria2cReady: Boolean = false,
-    val youtubedlAndroidVersion: String = GrabEngine.YOUTUBEDL_ANDROID_VERSION,
+    val youtubedlAndroidVersion: String = GetiyEngine.YOUTUBEDL_ANDROID_VERSION,
     val error: String? = null,
 ) {
     val allCoreReady: Boolean
@@ -77,7 +78,7 @@ data class EngineStatus(
  * Native Android yt-dlp, FFmpeg, and Aria2c engine powered by youtubedl-android.
  * All native binaries are packaged directly inside the APK (zero dynamic code loading).
  */
-class GrabEngine(private val context: Context) {
+class GetiyEngine(private val context: Context) {
 
     private val appContext = context.applicationContext
     private val initMutex = Mutex()
@@ -273,11 +274,13 @@ class GrabEngine(private val context: Context) {
 
     suspend fun fetch(url: String): MediaInfo = withContext(Dispatchers.IO) {
         ensureReady()
+        val cleanUrl = Links.stripTrackingParams(url)
         val jar = File(appContext.cacheDir, "cookies-${UUID.randomUUID()}.txt")
         try {
             jar.writeText("# Netscape HTTP Cookie File\n")
-            val req = YoutubeDLRequest(url)
+            val req = YoutubeDLRequest(cleanUrl)
             req.addOption("--cookies", jar.absolutePath)
+            req.addOption("--no-cache-dir")
             req.addOption("--dump-single-json")
             req.addOption("--no-warnings")
             req.addOption("--no-check-certificates")
@@ -288,8 +291,8 @@ class GrabEngine(private val context: Context) {
 
             val out = YoutubeDL.getInstance().execute(req).out
             val cookiesText = if (jar.exists()) jar.readText() else ""
-            val combined = out + "\n\u0000GRAB-COOKIES\u0000\n" + cookiesText
-            MediaHelpers.parseMediaInfoJson(combined, url)
+            val combined = out + "\n\u0000GETIY-COOKIES\u0000\n" + cookiesText
+            MediaHelpers.parseMediaInfoJson(combined, cleanUrl)
         } catch (t: Throwable) {
             throw IllegalStateException(cleanEngineError(t), t)
         } finally {
@@ -300,15 +303,17 @@ class GrabEngine(private val context: Context) {
     /** Downloads a lightweight cached MP4 preview when sites refuse direct stream playback (e.g. TikTok). */
     suspend fun previewFile(url: String): String? = withContext(Dispatchers.IO) {
         ensureReady()
+        val cleanUrl = Links.stripTrackingParams(url)
         val dir = File(appContext.cacheDir, "preview").apply {
             deleteRecursively()
             mkdirs()
         }
-        val req = YoutubeDLRequest(url)
+        val req = YoutubeDLRequest(cleanUrl)
         req.addOption("-f", "w[vcodec!=none][acodec!=none][ext=mp4]/w[vcodec!=none][acodec!=none]/w")
         req.addOption("-o", File(dir, "preview.%(ext)s").absolutePath)
         req.addOption("--no-playlist")
         req.addOption("--no-part")
+        req.addOption("--no-cache-dir")
         req.addOption("--no-check-certificates")
         req.addOption("--socket-timeout", "25")
         req.addOption("--print", "after_move:filepath")
@@ -338,12 +343,14 @@ class GrabEngine(private val context: Context) {
             ensureReady()
             if (!outputDir.exists()) outputDir.mkdirs()
 
+            val cleanUrl = Links.stripTrackingParams(url)
             val ytTemplate = if (template.isBlank()) "%(title).80B [%(id)s]" else MediaHelpers.ytDlpTemplate(template)
-            val req = YoutubeDLRequest(url)
+            val req = YoutubeDLRequest(cleanUrl)
             req.addOption("-o", File(outputDir, "$ytTemplate$suffix.%(ext)s").absolutePath)
             req.addOption("--no-playlist")
             req.addOption("--newline")
             req.addOption("--no-mtime")
+            req.addOption("--no-cache-dir")
             req.addOption("--continue")
             req.addOption("--no-check-certificates")
             req.addOption("--socket-timeout", "30")

@@ -40,7 +40,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.data.model.DownloadMode
 import com.example.data.model.MediaHelpers
 import com.example.data.model.MediaInfo
@@ -50,7 +50,7 @@ import com.example.ui.components.PopCardShape
 import com.example.ui.components.PopPillShape
 import com.example.ui.components.PopSegmented
 import com.example.ui.components.PopThumb
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +60,7 @@ fun PlaylistBottomSheet(
     onDismiss: () -> Unit,
     onDownloadSelected: (Set<Int>, DownloadMode, Int?) -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val modes = listOf(DownloadMode.VIDEO, DownloadMode.VIDEO_AND_AUDIO, DownloadMode.AUDIO_ONLY)
     val heights: List<Int?> = listOf(null, 1080, 720, 480)
@@ -118,7 +118,7 @@ fun PlaylistBottomSheet(
                         FilterChip(
                             selected = active,
                             onClick = {
-                                GrabHaptics.selection()
+                                GetiyHaptics.selection()
                                 maxHeight = h
                             },
                             label = { Text(if (h == null) "Best" else "${h}p") },
@@ -148,7 +148,7 @@ fun PlaylistBottomSheet(
                 Spacer(Modifier.weight(1f))
                 TextButton(
                     onClick = {
-                        GrabHaptics.selection()
+                        GetiyHaptics.selection()
                         selected = if (allSelected) emptySet() else info.entries.indices.toSet()
                     },
                 ) {
@@ -172,7 +172,7 @@ fun PlaylistBottomSheet(
                             .clip(PopCardShape)
                             .background(if (isPicked) pop.soft else pop.card)
                             .clickable {
-                                GrabHaptics.selection()
+                                GetiyHaptics.selection()
                                 selected = if (isPicked) selected - index else selected + index
                             }
                             .padding(10.dp),

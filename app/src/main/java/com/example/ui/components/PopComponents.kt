@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -61,9 +63,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import com.example.core.FileShareHelper
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.ui.theme.GetiyAccentBrush
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.theme.PopInk
 import com.example.ui.theme.popTintFor
 
@@ -87,7 +89,7 @@ fun PopButton(
     shape: RoundedCornerShape = RoundedCornerShape(16.dp),
     tag: String? = null,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val bg = containerColor ?: pop.strong
     val fg = contentColor ?: if (useGradient) Color(0xFF081024) else pop.onStrong
     val active = enabled && !busy
@@ -95,7 +97,7 @@ fun PopButton(
     Surface(
         onClick = {
             if (active) {
-                GrabHaptics.light()
+                GetiyHaptics.light()
                 onClick()
             }
         },
@@ -167,13 +169,13 @@ fun PopIconButton(
     size: Dp = 48.dp,
     tag: String? = null,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val bg = background ?: pop.field
     val fg = foreground ?: pop.text
     Surface(
         onClick = {
             if (onClick != null) {
-                GrabHaptics.selection()
+                GetiyHaptics.selection()
                 onClick()
             }
         },
@@ -204,7 +206,7 @@ fun PopTag(
     background: Color? = null,
     contentColor: Color? = null,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Box(
         modifier = modifier
             .clip(PopPillShape)
@@ -227,7 +229,7 @@ fun PopSection(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Text(
         text = title,
         style = MaterialTheme.typography.labelLarge.copy(
@@ -319,50 +321,36 @@ fun PopProgressBar(
     fillColor: Color? = null,
     height: Dp = 8.dp,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val track = trackColor ?: pop.track
     val fill = fillColor ?: pop.strong
 
-    BoxWithConstraints(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height)
-            .clip(PopPillShape)
-            .background(track),
-    ) {
-        if (progress == null) {
-            val infinite = rememberInfiniteTransition(label = "indeterminate")
-            val shift by infinite.animateFloat(
-                initialValue = -0.35f,
-                targetValue = 1.0f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(1100, easing = LinearEasing),
-                    repeatMode = RepeatMode.Restart,
-                ),
-                label = "sweep",
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(0.38f)
-                    .offset(x = maxWidth * shift)
-                    .clip(PopPillShape)
-                    .background(fill),
-            )
-        } else {
-            val animated by animateFloatAsState(
-                targetValue = progress.coerceIn(0f, 1f),
-                animationSpec = tween(220),
-                label = "progress",
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(animated.coerceAtLeast(0.02f))
-                    .clip(PopPillShape)
-                    .background(fill),
-            )
-        }
+    if (progress == null) {
+        LinearProgressIndicator(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(height)
+                .clip(PopPillShape),
+            color = fill,
+            trackColor = track,
+            strokeCap = StrokeCap.Round,
+        )
+    } else {
+        val animated by animateFloatAsState(
+            targetValue = progress.coerceIn(0f, 1f),
+            animationSpec = tween(220),
+            label = "progress",
+        )
+        LinearProgressIndicator(
+            progress = { animated },
+            modifier = modifier
+                .fillMaxWidth()
+                .height(height)
+                .clip(PopPillShape),
+            color = fill,
+            trackColor = track,
+            strokeCap = StrokeCap.Round,
+        )
     }
 }
 
@@ -374,7 +362,7 @@ fun <T> PopSegmented(
     onSelected: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val selectedIdx = values.indexOf(selected).coerceAtLeast(0)
 
     BoxWithConstraints(
@@ -420,7 +408,7 @@ fun <T> PopSegmented(
                         .clip(PopPillShape)
                         .clickable {
                             if (!active) {
-                                GrabHaptics.selection()
+                                GetiyHaptics.selection()
                                 onSelected(value)
                             }
                         },
@@ -449,7 +437,7 @@ fun PopOptionTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val bg by animateColorAsState(
         targetValue = if (selected) pop.soft else pop.card,
         animationSpec = tween(160),
@@ -469,7 +457,7 @@ fun PopOptionTile(
             .background(bg)
             .border(BorderStroke(2.dp, border), PopCardShape)
             .clickable {
-                GrabHaptics.selection()
+                GetiyHaptics.selection()
                 onClick()
             }
             .padding(horizontal = 18.dp, vertical = 16.dp),

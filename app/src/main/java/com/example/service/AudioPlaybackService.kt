@@ -66,7 +66,7 @@ class AudioPlaybackService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "grab_audio_playback"
+        private const val CHANNEL_ID = "getiy_audio_playback"
         private const val NOTIFICATION_ID = 1002
         private const val ACTION_TOGGLE = "com.example.AUDIO_TOGGLE"
         private const val ACTION_STOP = "com.example.AUDIO_STOP"
@@ -129,7 +129,7 @@ class AudioPlaybackService : Service() {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             return NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_stat_grab)
+                .setSmallIcon(R.drawable.ic_stat_getiy)
                 .setContentTitle(title)
                 .setContentText(subtitle)
                 .setOngoing(isPlaying)

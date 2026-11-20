@@ -9,9 +9,9 @@ import android.os.VibratorManager
 
 /**
  * Crisp, iOS-style tactile feedback using Android haptic primitives (API 30+)
- * with clean predefined fallbacks for older devices, ported from Grab's HapticsPlugin.
+ * with clean predefined fallbacks for older devices for Getiy.
  */
-object GrabHaptics {
+object GetiyHaptics {
     @Volatile
     var enabled: Boolean = true
 

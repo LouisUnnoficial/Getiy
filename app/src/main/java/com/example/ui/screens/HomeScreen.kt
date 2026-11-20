@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,6 +61,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -70,15 +72,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.FileShareHelper
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.core.Links
 import com.example.data.db.DownloadJobEntity
 import com.example.data.model.DownloadMode
 import com.example.data.model.JobStatus
+import com.example.data.model.MediaHelpers
 import com.example.data.model.MediaInfo
 import com.example.ui.components.PopButton
 import com.example.ui.components.PopCardShape
 import com.example.ui.components.PopPillShape
+import com.example.ui.components.PopProgressBar
 import com.example.ui.components.PopSection
 import com.example.ui.components.PopTag
 import com.example.ui.components.PopThumb
@@ -87,7 +91,7 @@ import com.example.ui.theme.GetiyAzure
 import com.example.ui.theme.GetiyMint
 import com.example.ui.theme.GetiyNavy
 import com.example.ui.theme.GetiyNavyDeep
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.viewmodel.FetchResult
 import com.example.ui.viewmodel.FetchUiState
 
@@ -95,6 +99,7 @@ import com.example.ui.viewmodel.FetchUiState
 fun HomeScreen(
     fetchState: FetchUiState,
     recentJobs: List<DownloadJobEntity>,
+    speeds: Map<String, String>,
     activeCount: Int,
     savedCount: Int,
     engineVersion: String?,
@@ -108,11 +113,12 @@ fun HomeScreen(
     onJumpToLibrary: () -> Unit,
     onCopyError: (String) -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
     val detectedPlatform = Links.platformOf(Links.extractLink(fetchState.urlText) ?: fetchState.urlText)
     val isBusy = fetchState.result is FetchResult.Loading
+    val activeJobs = recentJobs.filter { it.jobStatus.isActive }
     val completedRecent = recentJobs.filter { it.jobStatus == JobStatus.DONE }.take(6)
 
     Box(
@@ -180,7 +186,7 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                text = "Drop any link in the dock below or tap Quick Paste to grab instantly.",
+                                text = "Drop any link in the dock below or tap Quick Paste to fetch instantly.",
                                 style = MaterialTheme.typography.bodyMedium.copy(color = pop.muted),
                             )
                         }
@@ -218,7 +224,7 @@ fun HomeScreen(
                 item(key = "fetch_status") {
                     when (val res = fetchState.result) {
                         is FetchResult.Idle -> Unit
-                        is FetchResult.Loading -> FetchingSkeletonCard()
+                        is FetchResult.Loading -> FetchingSkeletonCard(url = res.url)
                         is FetchResult.Ready -> ReadyMediaCard(info = res.info, onOpen = onReopenReady)
                         is FetchResult.Error -> FetchErrorCard(
                             message = res.message,
@@ -229,6 +235,18 @@ fun HomeScreen(
                             },
                         )
                     }
+                }
+            }
+
+            // Live Active Download Progress Card when engines are actively processing a download
+            if (activeJobs.isNotEmpty()) {
+                item(key = "home_active_transfer") {
+                    ActiveDownloadProgressCard(
+                        job = activeJobs.first(),
+                        totalActive = activeJobs.size,
+                        speed = speeds[activeJobs.first().id],
+                        onClick = onJumpToDownloads,
+                    )
                 }
             }
 
@@ -270,7 +288,7 @@ fun HomeScreen(
                                 ),
                                 modifier = Modifier
                                     .clickable {
-                                        GrabHaptics.selection()
+                                        GetiyHaptics.selection()
                                         onJumpToLibrary()
                                     }
                                     .padding(horizontal = 4.dp, vertical = 4.dp),
@@ -347,10 +365,25 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .navigationBarsPadding(),
             ) {
+                if (isBusy) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .testTag("dock_fetch_progress_indicator"),
+                        color = pop.strong,
+                        trackColor = pop.track,
+                        strokeCap = StrokeCap.Round,
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                 // Input field row
                 Row(
                     modifier = Modifier
@@ -431,7 +464,7 @@ fun HomeScreen(
                 ) {
                     Surface(
                         onClick = {
-                            GrabHaptics.selection()
+                            GetiyHaptics.selection()
                             onPasteAndFetch()
                         },
                         shape = RoundedCornerShape(16.dp),
@@ -479,6 +512,7 @@ fun HomeScreen(
                         tag = "home_fetch_button",
                     )
                 }
+                }
             }
         }
     }
@@ -494,14 +528,14 @@ private fun BentoStatTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Column(
         modifier = modifier
             .clip(PopCardShape)
             .background(pop.card)
             .border(1.dp, pop.track, PopCardShape)
             .clickable {
-                GrabHaptics.selection()
+                GetiyHaptics.selection()
                 onClick()
             }
             .padding(16.dp),
@@ -542,7 +576,7 @@ private fun BentoStatTile(
 
 @Composable
 private fun PlatformPill(label: String, active: Boolean) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val bg by animateColorAsState(
         targetValue = if (active) pop.strong else pop.card,
         animationSpec = tween(220),
@@ -579,52 +613,175 @@ private fun PlatformPill(label: String, active: Boolean) {
 }
 
 @Composable
-private fun FetchingSkeletonCard() {
-    val pop = GrabThemeTokens.pop
+private fun FetchingSkeletonCard(url: String) {
+    val pop = GetiyThemeTokens.pop
     val pulse = rememberInfiniteTransition(label = "skeletonPulse")
     val alpha by pulse.animateFloat(
-        initialValue = 0.45f,
+        initialValue = 0.55f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(750), RepeatMode.Reverse),
         label = "skelAlpha",
     )
-    Row(
+    val platform = Links.platformOf(url)
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(PopCardShape)
             .background(pop.card)
-            .border(1.dp, pop.track, PopCardShape)
-            .padding(14.dp)
-            .alpha(alpha),
-        verticalAlignment = Alignment.CenterVertically,
+            .border(1.dp, pop.strong.copy(alpha = 0.4f), PopCardShape)
+            .padding(16.dp)
+            .testTag("home_fetching_card"),
     ) {
-        Box(
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(pop.soft)
+                    .alpha(alpha),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Download,
+                    contentDescription = null,
+                    tint = pop.strong,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (platform != null) "Processing $platform link…" else "Processing link…",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        color = pop.text,
+                        fontWeight = FontWeight.ExtraBold,
+                    ),
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = Links.displayHostAndPath(url),
+                    style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(
             modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(pop.track),
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(PopPillShape)
+                .testTag("home_fetch_progress_indicator"),
+            color = pop.strong,
+            trackColor = pop.track,
+            strokeCap = StrokeCap.Round,
         )
-        Spacer(Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(14.dp)
-                    .clip(PopPillShape)
-                    .background(pop.track),
-            )
-            Spacer(Modifier.height(8.dp))
-            Box(
-                modifier = Modifier
-                    .width(130.dp)
-                    .height(12.dp)
-                    .clip(PopPillShape)
-                    .background(pop.track),
-            )
-            Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Reading formats, quality & streams via yt-dlp…",
+            style = MaterialTheme.typography.labelSmall.copy(
+                color = pop.muted,
+                fontWeight = FontWeight.SemiBold,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun ActiveDownloadProgressCard(
+    job: DownloadJobEntity,
+    totalActive: Int,
+    speed: String?,
+    onClick: () -> Unit,
+) {
+    val pop = GetiyThemeTokens.pop
+    val status = job.jobStatus
+    val pct = job.progress.toInt().coerceIn(0, 100)
+    val indeterminate = status == JobStatus.QUEUED ||
+        status == JobStatus.WAITING ||
+        (status == JobStatus.RUNNING && (job.progress <= 0.0 || job.progress >= 100.0))
+
+    val subtitle = when (status) {
+        JobStatus.QUEUED -> "Queued in transfer engine…"
+        JobStatus.WAITING -> "Reconnecting…"
+        JobStatus.PAUSED -> "Paused at $pct%"
+        JobStatus.RUNNING -> if (job.progress >= 100.0) {
+            "Muxing & finalizing with FFmpeg…"
+        } else {
+            listOfNotNull(
+                speed,
+                job.eta?.takeIf { it > 0 }?.let { "${MediaHelpers.etaLabel(it)} left" },
+            ).ifEmpty { listOf("Downloading via yt-dlp…") }.joinToString(" · ")
+        }
+        else -> "Processing…"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(PopCardShape)
+            .background(pop.soft)
+            .border(1.dp, pop.strong.copy(alpha = 0.45f), PopCardShape)
+            .clickable {
+                GetiyHaptics.selection()
+                onClick()
+            }
+            .padding(16.dp)
+            .testTag("home_active_download_card"),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "Analyzing link metadata…",
-                style = MaterialTheme.typography.bodySmall.copy(color = GetiyMint, fontWeight = FontWeight.SemiBold),
+                text = if (totalActive > 1) "PROCESSING ($totalActive ACTIVE)" else "PROCESSING DOWNLOAD",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = pop.strong,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.6.sp,
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            if (!indeterminate) {
+                Text(
+                    text = "$pct%",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        color = pop.strong,
+                        fontWeight = FontWeight.ExtraBold,
+                    ),
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = job.title,
+            style = MaterialTheme.typography.titleSmall.copy(
+                color = pop.text,
+                fontWeight = FontWeight.Bold,
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(10.dp))
+        PopProgressBar(
+            progress = if (indeterminate) null else (job.progress / 100.0).toFloat(),
+            trackColor = pop.trackOnSoft,
+            height = 6.dp,
+            modifier = Modifier.testTag("home_active_download_progress"),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "View queue",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = pop.strong,
+                    fontWeight = FontWeight.Bold,
+                ),
             )
         }
     }
@@ -632,7 +789,7 @@ private fun FetchingSkeletonCard() {
 
 @Composable
 private fun ReadyMediaCard(info: MediaInfo, onOpen: () -> Unit) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -640,7 +797,7 @@ private fun ReadyMediaCard(info: MediaInfo, onOpen: () -> Unit) {
             .background(pop.soft)
             .border(1.dp, pop.strong.copy(alpha = 0.5f), PopCardShape)
             .clickable {
-                GrabHaptics.light()
+                GetiyHaptics.light()
                 onOpen()
             }
             .padding(14.dp)
@@ -692,7 +849,7 @@ private fun FetchErrorCard(
     onRetry: () -> Unit,
     onCopy: () -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -727,7 +884,7 @@ private fun FetchErrorCard(
 
 @Composable
 private fun RecentCaptureCard(job: DownloadJobEntity, onClick: () -> Unit) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Column(
         modifier = Modifier
             .width(196.dp)
@@ -735,7 +892,7 @@ private fun RecentCaptureCard(job: DownloadJobEntity, onClick: () -> Unit) {
             .background(pop.card)
             .border(1.dp, pop.track, PopCardShape)
             .clickable {
-                GrabHaptics.selection()
+                GetiyHaptics.selection()
                 onClick()
             }
             .padding(10.dp),

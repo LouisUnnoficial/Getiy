@@ -60,8 +60,8 @@ class DownloadService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "grab_downloads"
-        private const val DONE_CHANNEL_ID = "grab_finished"
+        private const val CHANNEL_ID = "getiy_downloads"
+        private const val DONE_CHANNEL_ID = "getiy_finished"
         private const val NOTIFICATION_ID = 1001
         private const val EXTRA_COUNT = "count"
         private const val EXTRA_TITLE = "title"
@@ -113,7 +113,7 @@ class DownloadService : Service() {
                 PendingIntent.FLAG_IMMUTABLE,
             )
             val notification = NotificationCompat.Builder(context, DONE_CHANNEL_ID)
-                .setSmallIcon(if (ok) R.drawable.ic_stat_grab else android.R.drawable.stat_notify_error)
+                .setSmallIcon(if (ok) R.drawable.ic_stat_getiy else android.R.drawable.stat_notify_error)
                 .setContentTitle(if (ok) "Saved" else "Download failed")
                 .setContentText(title)
                 .setAutoCancel(true)
@@ -149,7 +149,7 @@ class DownloadService : Service() {
             )
             val heading = if (count == 1) title else "Downloading $count items"
             return NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_stat_grab)
+                .setSmallIcon(R.drawable.ic_stat_getiy)
                 .setContentTitle(heading)
                 .setContentText("$percent%")
                 .setProgress(100, percent, percent == 0)

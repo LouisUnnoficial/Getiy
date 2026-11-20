@@ -57,14 +57,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.core.AudioPlaybackState
 import com.example.core.FileShareHelper
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.data.model.LibraryItem
 import com.example.data.model.MediaHelpers
 import com.example.ui.components.PopCardShape
 import com.example.ui.components.PopIconButton
 import com.example.ui.components.PopPillShape
 import com.example.ui.components.PopThumb
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.theme.PopInk
 import com.example.ui.theme.PopYellow
 import kotlinx.coroutines.delay
@@ -79,7 +79,7 @@ fun MiniPlayerBar(
     modifier: Modifier = Modifier,
 ) {
     val item = audioState.current ?: return
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
 
     Surface(
         onClick = onOpenFullPlayer,
@@ -143,7 +143,7 @@ fun AudioPlayerScreen(
     onMakeRingtone: (LibraryItem) -> Unit,
 ) {
     BackHandler(onBack = onBack)
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val context = LocalContext.current
     val item = audioState.current
     if (item == null) {
@@ -252,7 +252,7 @@ fun AudioPlayerScreen(
             )
             Surface(
                 onClick = {
-                    GrabHaptics.light()
+                    GetiyHaptics.light()
                     onTogglePlayPause()
                 },
                 shape = CircleShape,
@@ -279,7 +279,7 @@ fun AudioPlayerScreen(
         Spacer(Modifier.height(18.dp))
         Surface(
             onClick = {
-                GrabHaptics.selection()
+                GetiyHaptics.selection()
                 onCycleSpeed()
             },
             shape = PopPillShape,

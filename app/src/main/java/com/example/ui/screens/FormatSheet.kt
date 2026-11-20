@@ -64,8 +64,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.example.core.GrabHaptics
-import com.example.data.engine.GrabEngine
+import com.example.core.GetiyHaptics
+import com.example.data.engine.GetiyEngine
 import com.example.data.model.DownloadMode
 import com.example.data.model.MediaHelpers
 import com.example.data.model.MediaInfo
@@ -79,7 +79,7 @@ import com.example.ui.components.PopSection
 import com.example.ui.components.PopSegmented
 import com.example.ui.components.PopTag
 import com.example.ui.components.PopThumb
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.theme.PopInk
 import com.example.ui.theme.PopYellow
 import com.example.ui.viewmodel.FetchUiState
@@ -92,7 +92,7 @@ import java.io.File
 fun FormatBottomSheet(
     fetchState: FetchUiState,
     settings: AppSettings,
-    engine: GrabEngine,
+    engine: GetiyEngine,
     onDismiss: () -> Unit,
     onModeChange: (DownloadMode) -> Unit,
     onOptionChange: (Int) -> Unit,
@@ -104,7 +104,7 @@ fun FormatBottomSheet(
     onDownload: () -> Unit,
 ) {
     val info = fetchState.currentInfo ?: return
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val modes = remember(info) {
@@ -154,7 +154,7 @@ fun FormatBottomSheet(
                         .clip(PopCardShape)
                         .background(pop.card)
                         .clickable {
-                            GrabHaptics.selection()
+                            GetiyHaptics.selection()
                             onTrimToggle(fetchState.trim == null)
                         }
                         .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -186,7 +186,7 @@ fun FormatBottomSheet(
                     Switch(
                         checked = fetchState.trim != null,
                         onCheckedChange = {
-                            GrabHaptics.selection()
+                            GetiyHaptics.selection()
                             onTrimToggle(it)
                         },
                         colors = SwitchDefaults.colors(
@@ -268,7 +268,7 @@ fun FormatBottomSheet(
                         FilterChip(
                             selected = selected,
                             onClick = {
-                                GrabHaptics.selection()
+                                GetiyHaptics.selection()
                                 onToggleSubLang(track.lang)
                             },
                             label = { Text(track.lang.uppercase()) },
@@ -346,10 +346,10 @@ fun FormatBottomSheet(
 private fun ClipPreviewSection(
     info: MediaInfo,
     trim: TrimRange?,
-    engine: GrabEngine,
+    engine: GetiyEngine,
     onTrimChange: (Double, Double) -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val scope = rememberCoroutineScope()
     val duration = info.duration ?: 0.0
 
@@ -528,7 +528,7 @@ private fun PopTrimBar(
     playheadSec: Double,
     onTrimChange: (Double, Double) -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     var widthPx by remember { mutableFloatStateOf(1f) }
     var draggingStart by remember { mutableStateOf<Boolean?>(null) }
 
@@ -545,7 +545,7 @@ private fun PopTrimBar(
                         val startPx = (trim.start / duration).toFloat() * widthPx
                         val endPx = (trim.end / duration).toFloat() * widthPx
                         draggingStart = kotlin.math.abs(offset.x - startPx) <= kotlin.math.abs(offset.x - endPx)
-                        GrabHaptics.selection()
+                        GetiyHaptics.selection()
                     },
                     onDragEnd = { draggingStart = null },
                     onDragCancel = { draggingStart = null },
@@ -598,7 +598,7 @@ private fun PopTrimBar(
             drawRect(PopYellow, Offset(startX, 0f), Size((endX - startX).coerceAtLeast(handleW), borderH))
             drawRect(PopYellow, Offset(startX, h - borderH), Size((endX - startX).coerceAtLeast(handleW), borderH))
 
-            // Yellow left & right grab handles
+            // Left & right trim handles
             drawRoundRect(
                 color = PopYellow,
                 topLeft = Offset(startX, 0f),

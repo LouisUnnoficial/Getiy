@@ -63,7 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
 import com.example.R
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.data.engine.EngineStatus
 import com.example.data.model.AppThemeMode
 import com.example.data.model.DownloadMode
@@ -78,7 +78,7 @@ import com.example.ui.theme.GetiyAccentBrush
 import com.example.ui.theme.GetiyAzure
 import com.example.ui.theme.GetiyMint
 import com.example.ui.theme.GetiyPeriwinkle
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 
 private enum class SettingsPicker {
     DEFAULT_MODE,
@@ -102,7 +102,7 @@ fun SettingsScreen(
     onClearFailed: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     var activePicker by remember { mutableStateOf<SettingsPicker?>(null) }
     var showFolderDialog by remember { mutableStateOf(false) }
     var showTemplateDialog by remember { mutableStateOf(false) }
@@ -120,7 +120,7 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = base == key,
                                 onClick = {
-                                    GrabHaptics.selection()
+                                    GetiyHaptics.selection()
                                     base = key
                                 },
                                 label = { Text(label) },
@@ -182,7 +182,7 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = tpl.contains(token),
                                 onClick = {
-                                    GrabHaptics.selection()
+                                    GetiyHaptics.selection()
                                     tpl = if (tpl.isBlank()) token else "$tpl - $token"
                                 },
                                 label = { Text(token) },
@@ -504,7 +504,7 @@ fun SettingsScreen(
                             checked = settings.useAria2c && engineStatus.aria2cReady,
                             enabled = engineStatus.aria2cReady,
                             onCheckedChange = { enabled ->
-                                GrabHaptics.selection()
+                                GetiyHaptics.selection()
                                 onUpdateSettings { it.copy(useAria2c = enabled) }
                             },
                             colors = SwitchDefaults.colors(
@@ -560,7 +560,7 @@ fun SettingsScreen(
                     .border(BorderStroke(1.dp, pop.track), PopCardShape)
                     .testTag("settings_about_row")
                     .clickable {
-                        GrabHaptics.selection()
+                        GetiyHaptics.selection()
                         onOpenAbout()
                     }
                     .padding(16.dp),
@@ -609,7 +609,7 @@ private fun QuickSettingBentoTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Column(
         modifier = modifier
             .clip(PopCardShape)
@@ -620,7 +620,7 @@ private fun QuickSettingBentoTile(
                 shape = PopCardShape,
             )
             .clickable {
-                GrabHaptics.selection()
+                GetiyHaptics.selection()
                 onClick()
             }
             .padding(15.dp),
@@ -654,7 +654,7 @@ private fun QuickSettingBentoTile(
 
 @Composable
 private fun PickerHeader(title: String) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Text(
         text = title,
         style = MaterialTheme.typography.titleLarge.copy(
@@ -667,7 +667,7 @@ private fun PickerHeader(title: String) {
 
 @Composable
 private fun SettingsGroup(content: @Composable () -> Unit) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -682,7 +682,7 @@ private fun SettingsGroup(content: @Composable () -> Unit) {
 @Composable
 private fun SettingsDivider() {
     HorizontalDivider(
-        color = GrabThemeTokens.pop.track,
+        color = GetiyThemeTokens.pop.track,
         modifier = Modifier.padding(horizontal = 16.dp),
     )
 }
@@ -694,14 +694,14 @@ private fun SettingsRow(
     onClick: (() -> Unit)?,
     tag: String? = null,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .then(
                 if (onClick != null) {
                     Modifier.clickable {
-                        GrabHaptics.selection()
+                        GetiyHaptics.selection()
                         onClick()
                     }
                 } else {
@@ -745,7 +745,7 @@ private fun EngineStatusRow(
     ready: Boolean,
     initializing: Boolean,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Row(
         modifier = Modifier
             .fillMaxWidth()

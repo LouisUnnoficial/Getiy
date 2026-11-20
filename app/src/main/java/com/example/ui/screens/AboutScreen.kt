@@ -59,7 +59,7 @@ import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
 import com.example.R
 import com.example.core.FileShareHelper
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.data.engine.EngineStatus
 import com.example.ui.components.PopButton
 import com.example.ui.components.PopCardShape
@@ -71,7 +71,7 @@ import com.example.ui.theme.GetiyAzure
 import com.example.ui.theme.GetiyIce
 import com.example.ui.theme.GetiyMint
 import com.example.ui.theme.GetiyNavy
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.viewmodel.ReleaseCheckState
 
 @Composable
@@ -82,7 +82,7 @@ fun AboutScreen(
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val context = LocalContext.current
 
     LazyColumn(
@@ -231,14 +231,14 @@ private fun AboutBentoLinkTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Column(
         modifier = modifier
             .clip(PopCardShape)
             .background(pop.card)
             .border(1.dp, pop.track, PopCardShape)
             .clickable {
-                GrabHaptics.selection()
+                GetiyHaptics.selection()
                 onClick()
             }
             .padding(16.dp),
@@ -277,7 +277,7 @@ private fun UpdateCheckCard(
     onCheck: () -> Unit,
     onOpenRelease: (String) -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val highlight = state is ReleaseCheckState.Available
 
     val icon: ImageVector = when (state) {
@@ -373,7 +373,7 @@ private fun LinkCard(
     items: List<Pair<Triple<ImageVector, String, String>, String>>,
     onOpen: (String) -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -386,7 +386,7 @@ private fun LinkCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        GrabHaptics.selection()
+                        GetiyHaptics.selection()
                         onOpen(url)
                     }
                     .padding(16.dp),

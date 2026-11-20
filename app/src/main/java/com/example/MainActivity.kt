@@ -49,7 +49,7 @@ import com.example.core.Links
 import com.example.data.model.AppThemeMode
 import com.example.data.model.JobStatus
 import com.example.data.model.LibraryItem
-import com.example.service.GrabTileService
+import com.example.service.GetiyTileService
 import com.example.ui.components.ClipboardOfferCard
 import com.example.ui.components.GetiySideRail
 import com.example.ui.components.GetiyTopNavBar
@@ -69,16 +69,17 @@ import com.example.ui.screens.RingtoneBottomSheet
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.VideoPlayerScreen
 import com.example.ui.screens.WelcomeScreen
-import com.example.ui.theme.GrabTheme
-import com.example.ui.theme.GrabThemeTokens
-import com.example.ui.viewmodel.GrabViewModel
+import com.example.ui.theme.GetiyNavy
+import com.example.ui.theme.GetiyTheme
+import com.example.ui.theme.GetiyThemeTokens
+import com.example.ui.viewmodel.GetiyViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private val viewModel: GrabViewModel by viewModels()
-    private var pendingClipboardGrab = false
+    private val viewModel: GetiyViewModel by viewModels()
+    private var pendingClipboardFetch = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
+            val settingsLoaded by viewModel.settingsLoaded.collectAsStateWithLifecycle()
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (settings.themeMode) {
                 AppThemeMode.SYSTEM -> systemDark
@@ -100,8 +102,8 @@ class MainActivity : ComponentActivity() {
             var showAbout by remember { mutableStateOf(false) }
             var ringtoneItem by remember { mutableStateOf<LibraryItem?>(null) }
 
-            val navyTopBar = !settings.seenWelcome || showAbout || detailJobId != null
-            val navyBottomBar = !settings.seenWelcome
+            val navyTopBar = !settingsLoaded || !settings.seenWelcome || showAbout || detailJobId != null
+            val navyBottomBar = !settingsLoaded || !settings.seenWelcome
             LaunchedEffect(darkTheme, navyTopBar, navyBottomBar, videoPlayerItem) {
                 val useDarkStatusIcons = when {
                     videoPlayerItem != null -> false
@@ -128,8 +130,8 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            GrabTheme(themeMode = settings.themeMode) {
-                GrabAppRoot(
+            GetiyTheme(themeMode = settings.themeMode) {
+                GetiyAppRoot(
                     viewModel = viewModel,
                     detailJobId = detailJobId,
                     videoPlayerItem = videoPlayerItem,
@@ -160,8 +162,8 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (!hasFocus) return
-        if (pendingClipboardGrab) {
-            pendingClipboardGrab = false
+        if (pendingClipboardFetch) {
+            pendingClipboardFetch = false
             lifecycleScope.launch {
                 delay(220)
                 viewModel.selectTab(0)
@@ -184,17 +186,17 @@ class MainActivity : ComponentActivity() {
                     viewModel.fetchLink(link)
                 }
             }
-            GrabTileService.ACTION_GRAB_CLIPBOARD -> {
+            GetiyTileService.ACTION_GETIY_CLIPBOARD -> {
                 viewModel.completeWelcome()
-                pendingClipboardGrab = true
+                pendingClipboardFetch = true
             }
         }
     }
 }
 
 @Composable
-private fun GrabAppRoot(
-    viewModel: GrabViewModel,
+private fun GetiyAppRoot(
+    viewModel: GetiyViewModel,
     detailJobId: String?,
     videoPlayerItem: LibraryItem?,
     showAudioPlayer: Boolean,
@@ -211,8 +213,9 @@ private fun GrabAppRoot(
     onOpenRingtone: (LibraryItem) -> Unit,
     onCloseRingtone: () -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val settingsLoaded by viewModel.settingsLoaded.collectAsStateWithLifecycle()
     val jobs by viewModel.jobs.collectAsStateWithLifecycle()
     val speeds by viewModel.speeds.collectAsStateWithLifecycle()
     val extractions by viewModel.extractions.collectAsStateWithLifecycle()
@@ -243,8 +246,11 @@ private fun GrabAppRoot(
         PopTabItem(Icons.Rounded.Tune, "Settings", testTag = "tab_settings"),
     )
 
-    Box(modifier = Modifier.fillMaxSize().background(pop.bg)) {
-        if (!settings.seenWelcome) {
+    Box(modifier = Modifier.fillMaxSize().background(if (settingsLoaded) pop.bg else GetiyNavy)) {
+        if (!settingsLoaded) {
+            // Keep seamless #0E1935 launch backdrop until DataStore emits saved onboarding state
+            Box(modifier = Modifier.fillMaxSize().background(GetiyNavy))
+        } else if (!settings.seenWelcome) {
             WelcomeScreen(onDone = { viewModel.completeWelcome() })
         } else {
             // Adaptive Shell: Top Navigation Bar on compact phones, Left Side Rail on wide screens
@@ -262,6 +268,7 @@ private fun GrabAppRoot(
                                 0 -> HomeScreen(
                                     fetchState = fetchState,
                                     recentJobs = jobs,
+                                    speeds = speeds,
                                     activeCount = activeCount,
                                     savedCount = libraryItems.size,
                                     engineVersion = engineVersion,
@@ -334,7 +341,7 @@ private fun GrabAppRoot(
                                 clipboardOffer?.let { offer ->
                                     ClipboardOfferCard(
                                         offer = offer,
-                                        onGrab = viewModel::grabClipboardOffer,
+                                        onFetchOffer = viewModel::fetchClipboardOffer,
                                         onDismiss = viewModel::dismissClipboardOffer,
                                     )
                                 }

@@ -49,7 +49,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.data.db.DownloadJobEntity
 import com.example.data.model.DownloadMode
 import com.example.data.model.JobStatus
@@ -62,7 +62,7 @@ import com.example.ui.components.PopTag
 import com.example.ui.components.PopThumb
 import com.example.ui.theme.GetiyAzure
 import com.example.ui.theme.GetiyMint
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.theme.PopError
 import java.io.File
 import kotlin.math.roundToInt
@@ -86,7 +86,7 @@ fun DownloadsScreen(
     onClearFinished: () -> Unit,
     onOpenDetail: (String) -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     var filter by remember { mutableStateOf(QueueFilter.ALL) }
 
     val activeTotal = jobs.count { it.jobStatus.isActive }
@@ -144,7 +144,7 @@ fun DownloadsScreen(
                     FilterChip(
                         selected = filter == f,
                         onClick = {
-                            GrabHaptics.selection()
+                            GetiyHaptics.selection()
                             filter = f
                         },
                         label = { Text(f.label, fontWeight = FontWeight.Bold) },
@@ -157,7 +157,7 @@ fun DownloadsScreen(
                 if (hasFinished) {
                     Surface(
                         onClick = {
-                            GrabHaptics.selection()
+                            GetiyHaptics.selection()
                             onClearFinished()
                         },
                         shape = RoundedCornerShape(12.dp),
@@ -243,7 +243,7 @@ private fun QueueMetricTile(
     accent: Color,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
@@ -289,21 +289,21 @@ private fun TransferJobCard(
     onRemove: () -> Unit,
     onOpenDetail: () -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val status = job.jobStatus
     val active = status.isActive
     val pct = job.progress.roundToInt().coerceIn(0, 100)
     val files = job.pathList
 
     val statusText = when (status) {
-        JobStatus.QUEUED -> "Queued"
+        JobStatus.QUEUED -> "Queued · waiting for engine slot…"
         JobStatus.RUNNING -> if (job.progress >= 100.0) {
-            "Muxing & finalizing…"
+            "Muxing & finalizing with FFmpeg…"
         } else {
             listOfNotNull(
                 speed,
                 job.eta?.takeIf { it > 0 }?.let { "${MediaHelpers.etaLabel(it)} left" },
-            ).ifEmpty { listOf("Connecting…") }.joinToString(" · ")
+            ).ifEmpty { listOf("Connecting with yt-dlp…") }.joinToString(" · ")
         }
         JobStatus.DONE -> if (files.isEmpty()) "Saved" else File(files.first()).name
         JobStatus.FAILED -> job.error ?: "Failed"
@@ -324,7 +324,7 @@ private fun TransferJobCard(
             .then(
                 if (!active) {
                     Modifier.clickable {
-                        GrabHaptics.selection()
+                        GetiyHaptics.selection()
                         onOpenDetail()
                     }
                 } else {
@@ -434,10 +434,14 @@ private fun TransferJobCard(
 
         if (active) {
             Spacer(Modifier.height(12.dp))
+            val indeterminate = status == JobStatus.QUEUED ||
+                status == JobStatus.WAITING ||
+                (status == JobStatus.RUNNING && (job.progress <= 0.0 || job.progress >= 100.0))
             PopProgressBar(
-                progress = if (status == JobStatus.QUEUED && job.progress <= 0.0) null else (job.progress / 100.0).toFloat(),
+                progress = if (indeterminate) null else (job.progress / 100.0).toFloat(),
                 trackColor = if (status == JobStatus.RUNNING) pop.trackOnSoft else pop.track,
                 height = 7.dp,
+                modifier = Modifier.testTag("job_progress_indicator_${job.id}"),
             )
         }
 
@@ -480,14 +484,14 @@ private fun MiniActionPill(
     label: String,
     onClick: () -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(10.dp))
             .background(pop.field)
             .border(1.dp, pop.track, RoundedCornerShape(10.dp))
             .clickable {
-                GrabHaptics.selection()
+                GetiyHaptics.selection()
                 onClick()
             }
             .padding(horizontal = 10.dp, vertical = 5.dp),

@@ -1,6 +1,6 @@
 package com.example
 
-import com.example.data.engine.GrabEngine
+import com.example.data.engine.GetiyEngine
 import com.example.data.model.DownloadMode
 import com.example.data.model.MediaHelpers
 import com.example.data.model.SubtitleChoice
@@ -11,7 +11,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
 
-class GrabEngineTest {
+class GetiyEngineTest {
 
     @Test
     fun `applyArgsToRequest pairs video and subtitle options properly`() {
@@ -24,7 +24,7 @@ class GrabEngineTest {
             trimEnd = 45.2,
         )
         val req = YoutubeDLRequest("https://example.com/watch?v=test")
-        GrabEngine.applyArgsToRequest(req, args)
+        GetiyEngine.applyArgsToRequest(req, args)
 
         assertEquals("bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b", req.getOption("-f"))
         assertEquals("vcodec:h264,acodec:aac", req.getOption("-S"))
@@ -51,7 +51,7 @@ class GrabEngineTest {
             audioFormat = "mp3",
         )
         val req = YoutubeDLRequest("https://example.com/audio")
-        GrabEngine.applyArgsToRequest(req, args)
+        GetiyEngine.applyArgsToRequest(req, args)
 
         assertEquals("ba/b", req.getOption("-f"))
         assertEquals("mp3", req.getOption("--audio-format"))
@@ -85,9 +85,9 @@ class GrabEngineTest {
     fun `parseFfmpegVersionLine extracts version token`() {
         assertEquals(
             "7.1.1-android",
-            GrabEngine.parseFfmpegVersionLine("ffmpeg version 7.1.1-android Copyright (c) 2000-2025"),
+            GetiyEngine.parseFfmpegVersionLine("ffmpeg version 7.1.1-android Copyright (c) 2000-2025"),
         )
-        assertEquals(null, GrabEngine.parseFfmpegVersionLine(""))
+        assertEquals(null, GetiyEngine.parseFfmpegVersionLine(""))
     }
 
     @Test
@@ -95,7 +95,17 @@ class GrabEngineTest {
         val err = RuntimeException("Traceback (most recent call last):\n  File ...\nERROR: [youtube] Private video. Sign in if you've been granted access")
         assertEquals(
             "[youtube] Private video. Sign in if you've been granted access",
-            GrabEngine.cleanEngineError(err),
+            GetiyEngine.cleanEngineError(err),
         )
+    }
+
+    @Test
+    fun `stripTrackingParams removes ad and share trackers while preserving media IDs`() {
+        val dirty = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&si=abc123&utm_source=share&fbclid=xyz&list=PL123"
+        val cleaned = com.example.core.Links.stripTrackingParams(dirty)
+        assertEquals("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123", cleaned)
+
+        val igDirty = "https://www.instagram.com/reel/ABC123/?igsh=secret_tracker&utm_medium=copy_link"
+        assertEquals("https://www.instagram.com/reel/ABC123/", com.example.core.Links.stripTrackingParams(igDirty))
     }
 }

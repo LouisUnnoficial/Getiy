@@ -3,7 +3,7 @@ package com.example.core
 import android.net.Uri
 
 /**
- * Link parsing, platform detection, and canonical deduplication matching Asta39/grab.
+ * Link parsing, platform detection, and canonical deduplication for Getiy.
  */
 object Links {
     val platforms = listOf(
@@ -77,6 +77,29 @@ object Links {
         }.getOrDefault(emptyList())
 
         return if (params.isEmpty()) "$host$path" else "$host$path?${params.joinToString("&")}"
+    }
+
+    /**
+     * Strips ad/share tracking query parameters (utm_*, fbclid, gclid, si, igsh, etc.)
+     * while preserving essential media/playlist query parameters.
+     */
+    fun stripTrackingParams(url: String): String {
+        val trimmed = url.trim()
+        val qIdx = trimmed.indexOf('?')
+        if (qIdx < 0) return trimmed
+        val hashIdx = trimmed.indexOf('#', startIndex = qIdx)
+        val base = trimmed.substring(0, qIdx)
+        val query = if (hashIdx >= 0) trimmed.substring(qIdx + 1, hashIdx) else trimmed.substring(qIdx + 1)
+        val fragment = if (hashIdx >= 0) trimmed.substring(hashIdx) else ""
+        if (query.isEmpty()) return base + fragment
+
+        val kept = query.split('&').filter { param ->
+            if (param.isEmpty()) return@filter false
+            val eqIdx = param.indexOf('=')
+            val key = (if (eqIdx >= 0) param.substring(0, eqIdx) else param).lowercase()
+            key !in noiseParams && !key.startsWith("utm_")
+        }
+        return if (kept.isEmpty()) base + fragment else "$base?${kept.joinToString("&")}$fragment"
     }
 
     fun displayHostAndPath(url: String): String =

@@ -57,7 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.ui.components.PopButton
 import com.example.ui.components.PopPillShape
 import com.example.ui.theme.GetiyAccentBrush
@@ -143,7 +143,7 @@ fun WelcomeScreen(
     )
 
     LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage > 0) GrabHaptics.selection()
+        if (pagerState.currentPage > 0) GetiyHaptics.selection()
     }
 
     Column(
@@ -183,7 +183,7 @@ fun WelcomeScreen(
             Spacer(Modifier.weight(1f))
             TextButton(
                 onClick = {
-                    GrabHaptics.light()
+                    GetiyHaptics.light()
                     onDone()
                 },
                 modifier = Modifier.testTag("welcome_skip_button"),
@@ -335,7 +335,7 @@ fun WelcomeScreen(
             if (pagerState.currentPage > 0) {
                 Surface(
                     onClick = {
-                        GrabHaptics.selection()
+                        GetiyHaptics.selection()
                         scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
                     },
                     shape = RoundedCornerShape(16.dp),

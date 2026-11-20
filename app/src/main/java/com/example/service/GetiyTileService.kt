@@ -10,9 +10,9 @@ import com.example.MainActivity
 import com.example.R
 
 /**
- * Quick Settings tile ("Grab link"): opens Grab and fetches whatever link is on the clipboard.
+ * Quick Settings tile ("Getiy link"): opens Getiy and fetches whatever link is on the clipboard.
  */
-class GrabTileService : TileService() {
+class GetiyTileService : TileService() {
 
     override fun onStartListening() {
         qsTile?.apply {
@@ -27,7 +27,7 @@ class GrabTileService : TileService() {
     @SuppressLint("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         val intent = Intent(this, MainActivity::class.java)
-            .setAction(ACTION_GRAB_CLIPBOARD)
+            .setAction(ACTION_GETIY_CLIPBOARD)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         if (Build.VERSION.SDK_INT >= 34) {
             val pending = PendingIntent.getActivity(
@@ -44,6 +44,6 @@ class GrabTileService : TileService() {
     }
 
     companion object {
-        const val ACTION_GRAB_CLIPBOARD = "com.example.GRAB_CLIPBOARD"
+        const val ACTION_GETIY_CLIPBOARD = "com.getiy.tpxstudio.GETIY_CLIPBOARD"
     }
 }

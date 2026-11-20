@@ -7,7 +7,7 @@
     <string name="action_fetch">Fetch</string>
     <string name="action_paste_fetch">Paste link and fetch</string>
     <string name="action_clear">Clear</string>
-    <string name="action_grab_it">Get it</string>
+    <string name="action_get_it">Get it</string>
     <string name="action_dismiss">Dismiss</string>
     <string name="tab_home">Home</string>
     <string name="tab_downloads">Downloads</string>

@@ -8,7 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.data.model.AppThemeMode
 import com.example.data.model.DownloadMode
 import com.example.data.model.LibrarySort
@@ -16,7 +16,7 @@ import com.example.data.model.MediaHelpers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-private val Context.grabDataStore: DataStore<Preferences> by preferencesDataStore(name = "grab_settings")
+private val Context.getiyDataStore: DataStore<Preferences> by preferencesDataStore(name = "getiy_settings")
 
 class SettingsRepository(private val context: Context) {
 
@@ -37,9 +37,9 @@ class SettingsRepository(private val context: Context) {
         val USE_ARIA2C = booleanPreferencesKey("use_aria2c")
     }
 
-    val settingsFlow: Flow<AppSettings> = context.grabDataStore.data.map { p ->
+    val settingsFlow: Flow<AppSettings> = context.getiyDataStore.data.map { p ->
         val haptics = p[Keys.HAPTICS] ?: true
-        GrabHaptics.enabled = haptics
+        GetiyHaptics.enabled = haptics
         val heightRaw = p[Keys.MAX_HEIGHT] ?: 0
         AppSettings(
             defaultMode = DownloadMode.fromName(p[Keys.DEFAULT_MODE]),
@@ -60,7 +60,7 @@ class SettingsRepository(private val context: Context) {
     }
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
-        context.grabDataStore.edit { p ->
+        context.getiyDataStore.edit { p ->
             val currentHeight = (p[Keys.MAX_HEIGHT] ?: 0).takeIf { it > 0 }
             val current = AppSettings(
                 defaultMode = DownloadMode.fromName(p[Keys.DEFAULT_MODE]),
@@ -79,7 +79,7 @@ class SettingsRepository(private val context: Context) {
                 useAria2c = p[Keys.USE_ARIA2C] ?: false,
             )
             val next = transform(current)
-            GrabHaptics.enabled = next.hapticsEnabled
+            GetiyHaptics.enabled = next.hapticsEnabled
             p[Keys.DEFAULT_MODE] = next.defaultMode.name
             p[Keys.MAX_HEIGHT] = next.maxHeight ?: 0
             p[Keys.CONTAINER] = next.container

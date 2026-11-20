@@ -60,7 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.core.FileShareHelper
-import com.example.core.GrabHaptics
+import com.example.core.GetiyHaptics
 import com.example.data.db.DownloadJobEntity
 import com.example.data.model.LibraryItem
 import com.example.data.model.LibraryKind
@@ -79,7 +79,7 @@ import com.example.ui.theme.GetiyIce
 import com.example.ui.theme.GetiyMint
 import com.example.ui.theme.GetiyNavy
 import com.example.ui.theme.GetiyNavyDeep
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.theme.PopError
 import java.io.File
 import java.text.DateFormat
@@ -101,7 +101,7 @@ fun DownloadDetailScreen(
     onDeleteFile: (String, String) -> Unit,
 ) {
     BackHandler(onBack = onBack)
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val context = LocalContext.current
 
     if (job == null) {
@@ -361,7 +361,7 @@ fun DownloadDetailScreen(
                                     FilterChip(
                                         selected = false,
                                         onClick = {
-                                            GrabHaptics.light()
+                                            GetiyHaptics.light()
                                             onExtractAudio(job, videos.first(), fmt)
                                         },
                                         label = { Text(fmt.uppercase(), fontWeight = FontWeight.Bold) },

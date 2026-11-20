@@ -387,7 +387,7 @@ object MediaHelpers {
     }
 
     fun parseMediaInfoJson(rawOutput: String, requestedUrl: String): MediaInfo {
-        val parts = rawOutput.split("\n\u0000GRAB-COOKIES\u0000\n")
+        val parts = rawOutput.split("\n\u0000GETIY-COOKIES\u0000\n")
         val jsonText = parts.firstOrNull().orEmpty().trim()
         val cookieJar = parts.getOrNull(1).orEmpty()
 

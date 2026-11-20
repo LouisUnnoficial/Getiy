@@ -33,13 +33,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.core.GrabHaptics
-import com.example.data.engine.GrabEngine
+import com.example.core.GetiyHaptics
+import com.example.data.engine.GetiyEngine
 import com.example.data.model.LibraryItem
 import com.example.data.model.MediaHelpers
 import com.example.ui.components.PopButton
 import com.example.ui.components.PopTag
-import com.example.ui.theme.GrabThemeTokens
+import com.example.ui.theme.GetiyThemeTokens
 import com.example.ui.theme.PopError
 import com.example.ui.theme.PopYellow
 import kotlinx.coroutines.launch
@@ -51,13 +51,13 @@ private const val MAX_RINGTONE_SECONDS = 40f
 @Composable
 fun RingtoneBottomSheet(
     item: LibraryItem,
-    engine: GrabEngine,
+    engine: GetiyEngine,
     onMakeRingtone: suspend (String, Double, Double, String) -> Result<Uri>,
     onSetRingtone: (Uri) -> Boolean,
     onToast: (String, String?, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val pop = GrabThemeTokens.pop
+    val pop = GetiyThemeTokens.pop
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -187,11 +187,11 @@ fun RingtoneBottomSheet(
                             )
                             busy = false
                             result.onSuccess { uri ->
-                                GrabHaptics.success()
+                                GetiyHaptics.success()
                                 savedUri = uri
                                 onToast("Ringtone saved", "Saved to Ringtones/Getiy", false)
                             }.onFailure { err ->
-                                GrabHaptics.error()
+                                GetiyHaptics.error()
                                 errorMsg = err.message ?: "Couldn't create ringtone"
                             }
                         }
@@ -206,7 +206,7 @@ fun RingtoneBottomSheet(
                     onClick = {
                         val ok = onSetRingtone(savedUri!!)
                         if (ok) {
-                            GrabHaptics.success()
+                            GetiyHaptics.success()
                             onToast("Ringtone set", item.title, false)
                             onDismiss()
                         } else {

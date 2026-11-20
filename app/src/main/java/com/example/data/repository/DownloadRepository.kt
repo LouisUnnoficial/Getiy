@@ -8,7 +8,7 @@ import android.net.NetworkRequest
 import com.example.data.db.DownloadJobDao
 import com.example.data.db.DownloadJobEntity
 import com.example.data.engine.EngineEvent
-import com.example.data.engine.GrabEngine
+import com.example.data.engine.GetiyEngine
 import com.example.data.model.DownloadMode
 import com.example.data.model.JobStatus
 import com.example.data.model.MediaHelpers
@@ -56,7 +56,7 @@ data class DownloadCompletionEvent(
 class DownloadRepository(
     private val context: Context,
     private val dao: DownloadJobDao,
-    val engine: GrabEngine,
+    val engine: GetiyEngine,
     private val settingsRepository: SettingsRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

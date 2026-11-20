@@ -64,20 +64,20 @@ private val DarkScheme = darkColorScheme(
     onErrorContainer = Color(0xFFF6D4D9),
 )
 
-val GrabShapes = Shapes(
+val GetiyShapes = Shapes(
     small = RoundedCornerShape(14.dp),
     medium = RoundedCornerShape(20.dp),
     large = RoundedCornerShape(28.dp),
     extraLarge = RoundedCornerShape(32.dp),
 )
 
-object GrabThemeTokens {
+object GetiyThemeTokens {
     val pop: PopColors
         @Composable get() = LocalPopColors.current
 }
 
 @Composable
-fun GrabTheme(
+fun GetiyTheme(
     themeMode: AppThemeMode = AppThemeMode.DARK,
     content: @Composable () -> Unit,
 ) {
@@ -92,8 +92,8 @@ fun GrabTheme(
     CompositionLocalProvider(LocalPopColors provides pop) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = GrabTypography,
-            shapes = GrabShapes,
+            typography = GetiyTypography,
+            shapes = GetiyShapes,
             content = content,
         )
     }

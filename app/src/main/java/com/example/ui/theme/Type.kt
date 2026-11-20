@@ -16,7 +16,7 @@ val OutfitFontFamily = FontFamily(
     Font(R.font.outfit, FontWeight.ExtraBold),
 )
 
-val GrabTypography = Typography(
+val GetiyTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = OutfitFontFamily,
         fontWeight = FontWeight.ExtraBold,
