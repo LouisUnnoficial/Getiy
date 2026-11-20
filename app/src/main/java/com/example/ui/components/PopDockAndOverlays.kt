@@ -1,12 +1,12 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -17,10 +17,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,10 +31,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,32 +54,36 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.core.GrabHaptics
 import com.example.core.Links
+import com.example.ui.theme.GetiyAccentBrush
+import com.example.ui.theme.GetiyAzure
+import com.example.ui.theme.GetiyIce
+import com.example.ui.theme.GetiyMint
+import com.example.ui.theme.GetiyNavy
+import com.example.ui.theme.GetiyNavyDeep
+import com.example.ui.theme.GetiyPeriwinkle
 import com.example.ui.theme.GrabThemeTokens
 import com.example.ui.theme.PopError
-import com.example.ui.theme.PopInk
-import com.example.ui.theme.PopRosePink
-import com.example.ui.theme.PopSkyBlue
-import com.example.ui.theme.PopYellow
 import com.example.ui.viewmodel.ClipboardOfferState
 import com.example.ui.viewmodel.PopToastMessage
 import kotlinx.coroutines.delay
@@ -95,110 +99,105 @@ data class PopTabItem(
 )
 
 /**
- * Floating frosted-glass pill dock with a gooey yellow blob indicator that stretches
- * liquidly between tabs (leading and trailing edges spring at distinct rates).
+ * Top Studio Header + Segmented Pill Navigation Bar (replaces the old bottom dock).
+ * Keeps Getiy's #0E1935 Navy & Mint-to-Azure palette while relocating navigation to the top.
  */
 @Composable
-fun PopTabBar(
+fun GetiyTopNavBar(
     tabs: List<PopTabItem>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val pop = GrabThemeTokens.pop
-    var prevIndex by remember { mutableIntStateOf(selectedIndex) }
-    val movingRight = selectedIndex >= prevIndex
-    LaunchedEffect(selectedIndex) { prevIndex = selectedIndex }
+    val containerBg = if (pop.isDark) Color(0xF50E1935) else Color(0xF5F4F7FC)
+    val railBg = if (pop.isDark) Color(0xFF152345) else Color(0xFFE7EEF8)
+    val railBorder = if (pop.isDark) Color(0xFF263A6A) else Color(0xFFD2DDF0)
 
-    val glassSurface = if (pop.isDark) {
-        Color(0xE0222222)
-    } else {
-        Color(0xEBFFFFFF)
-    }
-    val glassBorder = if (pop.isDark) {
-        Color.White.copy(alpha = 0.14f)
-    } else {
-        PopInk.copy(alpha = 0.10f)
-    }
-
-    Box(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
+            .background(containerBg)
+            .statusBarsPadding()
+            .padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
     ) {
+        // Clean brand identity row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_getiy_logo),
+                contentDescription = "Getiy logo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .border(1.dp, railBorder, RoundedCornerShape(9.dp)),
+            )
+            Spacer(Modifier.width(9.dp))
+            Text(
+                text = "Getiy",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.ExtraBold,
+                    color = pop.text,
+                    letterSpacing = (-0.4).sp,
+                ),
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Top segmented sliding tab strip
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(66.dp)
-                .shadow(elevation = 14.dp, shape = PopPillShape, ambientColor = Color.Black.copy(alpha = 0.25f))
-                .clip(PopPillShape)
-                .background(glassSurface)
-                .border(1.dp, glassBorder, PopPillShape)
-                .padding(6.dp),
+                .height(48.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(railBg)
+                .border(1.dp, railBorder, RoundedCornerShape(16.dp))
+                .padding(4.dp),
         ) {
-            // Active tab takes flex 16, inactive takes flex 10 — matching Grab's expanding active pill!
-            val totalFlex = 16f + (tabs.size - 1) * 10f
-            fun leftFractionFor(idx: Int): Float = (idx * 10f) / totalFlex
-            fun rightFractionFor(idx: Int): Float = (idx * 10f + 16f) / totalFlex
-
-            val targetLeft = maxWidth * leftFractionFor(selectedIndex)
-            val targetRight = maxWidth * rightFractionFor(selectedIndex)
-
-            // Asymmetric spring stiffness produces the signature liquid "gooey stretch" between tabs
-            val leftX by animateDpAsState(
-                targetValue = targetLeft,
+            val count = tabs.size.coerceAtLeast(1)
+            val segW = maxWidth / count
+            val indicatorX by animateDpAsState(
+                targetValue = segW * selectedIndex,
                 animationSpec = spring(
-                    dampingRatio = 0.68f,
-                    stiffness = if (movingRight) Spring.StiffnessLow else Spring.StiffnessMediumLow,
+                    dampingRatio = 0.76f,
+                    stiffness = Spring.StiffnessMedium,
                 ),
-                label = "gooeyLeft",
-            )
-            val rightX by animateDpAsState(
-                targetValue = targetRight,
-                animationSpec = spring(
-                    dampingRatio = 0.68f,
-                    stiffness = if (movingRight) Spring.StiffnessMediumLow else Spring.StiffnessLow,
-                ),
-                label = "gooeyRight",
+                label = "topNavIndicator",
             )
 
-            // Gooey yellow selection blob
             Box(
                 modifier = Modifier
-                    .offset(x = leftX)
-                    .width((rightX - leftX).coerceAtLeast(48.dp))
+                    .offset(x = indicatorX)
+                    .width(segW)
                     .fillMaxHeight()
-                    .clip(PopPillShape)
-                    .background(PopYellow),
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(GetiyAccentBrush),
             )
 
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val idleTint = if (pop.isDark) Color(0xFFBDBDBD) else Color(0xFF3A3A3A)
-                tabs.forEachIndexed { i, tab ->
-                    val active = i == selectedIndex
-                    val iconScale by animateFloatAsState(
-                        targetValue = if (active) 1.08f else 1f,
-                        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
-                        label = "tabScale",
+            Row(modifier = Modifier.fillMaxSize()) {
+                tabs.forEachIndexed { idx, tab ->
+                    val active = idx == selectedIndex
+                    val fg by animateColorAsState(
+                        targetValue = if (active) GetiyNavyDeep else pop.muted,
+                        animationSpec = tween(160),
+                        label = "topNavFg",
                     )
                     Row(
                         modifier = Modifier
-                            .weight(if (active) 16f else 10f)
+                            .weight(1f)
                             .fillMaxHeight()
-                            .clip(PopPillShape)
+                            .clip(RoundedCornerShape(12.dp))
                             .testTag(tab.testTag)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
+                            .clickable {
                                 if (!active) {
                                     GrabHaptics.selection()
-                                    onSelect(i)
+                                    onSelect(idx)
                                 }
                             },
                         horizontalArrangement = Arrangement.Center,
@@ -208,12 +207,12 @@ fun PopTabBar(
                             badge = {
                                 if (tab.badge > 0) {
                                     Badge(
-                                        containerColor = PopInk,
-                                        contentColor = PopYellow,
+                                        containerColor = if (active) GetiyNavy else GetiyMint,
+                                        contentColor = if (active) GetiyMint else GetiyNavyDeep,
                                     ) {
                                         Text(
                                             text = "${tab.badge}",
-                                            fontSize = 10.sp,
+                                            fontSize = 9.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                         )
                                     }
@@ -223,24 +222,21 @@ fun PopTabBar(
                             Icon(
                                 imageVector = tab.icon,
                                 contentDescription = tab.label,
-                                tint = if (active) PopInk else idleTint,
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .scale(iconScale),
+                                tint = fg,
+                                modifier = Modifier.size(18.dp),
                             )
                         }
-                        AnimatedVisibility(visible = active) {
-                            Text(
-                                text = tab.label,
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = PopInk,
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Clip,
-                                modifier = Modifier.padding(start = 6.dp),
-                            )
-                        }
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = tab.label,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                color = fg,
+                                fontSize = 11.5.sp,
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
@@ -249,7 +245,91 @@ fun PopTabBar(
 }
 
 /**
- * Floating "You copied a link" ink pill card with pulsing yellow "Grab it" button.
+ * Adaptive Left Navigation Rail for Expanded screens (tablets / foldables).
+ */
+@Composable
+fun GetiySideRail(
+    tabs: List<PopTabItem>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val pop = GrabThemeTokens.pop
+    val railBg = if (pop.isDark) Color(0xFF132245) else Color(0xFFE9F1FC)
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(88.dp)
+            .background(railBg)
+            .statusBarsPadding()
+            .padding(vertical = 18.dp, horizontal = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.ic_getiy_logo),
+            contentDescription = "Getiy logo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .border(1.dp, pop.track, RoundedCornerShape(13.dp)),
+        )
+        Spacer(Modifier.height(12.dp))
+        tabs.forEachIndexed { idx, tab ->
+            val active = idx == selectedIndex
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .then(
+                        if (active) Modifier.background(GetiyAccentBrush) else Modifier,
+                    )
+                    .testTag(tab.testTag)
+                    .clickable {
+                        if (!active) {
+                            GrabHaptics.selection()
+                            onSelect(idx)
+                        }
+                    }
+                    .padding(vertical = 12.dp, horizontal = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                BadgedBox(
+                    badge = {
+                        if (tab.badge > 0) {
+                            Badge(
+                                containerColor = if (active) GetiyNavy else GetiyMint,
+                                contentColor = if (active) GetiyMint else GetiyNavyDeep,
+                            ) {
+                                Text("${tab.badge}", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    },
+                ) {
+                    Icon(
+                        imageVector = tab.icon,
+                        contentDescription = tab.label,
+                        tint = if (active) GetiyNavyDeep else pop.muted,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = tab.label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = if (active) GetiyNavyDeep else pop.muted,
+                        fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    ),
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Floating "Link copied" banner with pulsing Mint-to-Azure "Get it" button.
  */
 @Composable
 fun ClipboardOfferCard(
@@ -258,11 +338,10 @@ fun ClipboardOfferCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pop = GrabThemeTokens.pop
     val pulse = rememberInfiniteTransition(label = "grabPulse")
     val scale by pulse.animateFloat(
         initialValue = 1f,
-        targetValue = 1.05f,
+        targetValue = 1.04f,
         animationSpec = infiniteRepeatable(
             animation = tween(700, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
@@ -271,33 +350,32 @@ fun ClipboardOfferCard(
     )
 
     Surface(
-        shape = PopCardShape,
-        color = PopInk,
+        shape = RoundedCornerShape(18.dp),
+        color = Color(0xFF152345),
         shadowElevation = 10.dp,
-        border = if (pop.isDark) BorderStroke(1.5.dp, PopYellow) else null,
+        border = BorderStroke(1.dp, Color(0xFF2F457A)),
         modifier = modifier
             .fillMaxWidth()
             .testTag("clipboard_offer_card"),
     ) {
         Row(
-            modifier = Modifier.padding(start = 18.dp, top = 10.dp, end = 10.dp, bottom = 10.dp),
+            modifier = Modifier.padding(start = 14.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "${offer.platform} link copied",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        color = Color.White,
+                    text = "${offer.platform} link detected",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        color = GetiyIce,
                         fontWeight = FontWeight.ExtraBold,
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
                 Text(
                     text = Links.displayHostAndPath(offer.link),
                     style = MaterialTheme.typography.bodySmall.copy(
-                        color = Color.White.copy(alpha = 0.65f),
+                        color = GetiyIce.copy(alpha = 0.68f),
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -310,8 +388,8 @@ fun ClipboardOfferCard(
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "Dismiss",
-                    tint = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.size(20.dp),
+                    tint = GetiyIce.copy(alpha = 0.72f),
+                    modifier = Modifier.size(18.dp),
                 )
             }
             Surface(
@@ -319,27 +397,29 @@ fun ClipboardOfferCard(
                     GrabHaptics.light()
                     onGrab()
                 },
-                shape = PopPillShape,
-                color = PopYellow,
+                shape = RoundedCornerShape(12.dp),
+                color = Color.Transparent,
                 modifier = Modifier
                     .scale(scale)
                     .testTag("grab_offer_button"),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .background(GetiyAccentBrush, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Download,
                         contentDescription = null,
-                        tint = PopInk,
-                        modifier = Modifier.size(18.dp),
+                        tint = GetiyNavyDeep,
+                        modifier = Modifier.size(16.dp),
                     )
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(5.dp))
                     Text(
-                        text = "Grab it",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            color = PopInk,
+                        text = "Get it",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            color = GetiyNavyDeep,
                             fontWeight = FontWeight.ExtraBold,
                         ),
                     )
@@ -362,24 +442,25 @@ fun PopToastHost(
         modifier = modifier,
     ) {
         if (message != null) {
-            val bg = if (message.isError) PopError else PopInk
-            val fg = if (message.isError) Color.White else PopYellow
+            val bg = if (message.isError) PopError else Color(0xFF152345)
+            val fg = if (message.isError) Color.White else GetiyMint
             Surface(
                 onClick = onDismiss,
-                shape = PopPillShape,
+                shape = RoundedCornerShape(16.dp),
                 color = bg,
+                border = if (message.isError) null else BorderStroke(1.dp, Color(0xFF2F457A)),
                 shadowElevation = 10.dp,
                 modifier = Modifier.padding(horizontal = 20.dp),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
                         imageVector = if (message.isError) Icons.Rounded.Error else Icons.Rounded.CheckCircle,
                         contentDescription = null,
                         tint = fg,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(19.dp),
                     )
                     Spacer(Modifier.width(10.dp))
                     Column {
@@ -418,9 +499,6 @@ private data class ConfettiParticle(
     val spin: Float,
 )
 
-/**
- * Explosive Pop confetti burst when a download completes.
- */
 @Composable
 fun PopConfettiOverlay(
     triggerCount: Int,
@@ -428,7 +506,7 @@ fun PopConfettiOverlay(
 ) {
     var progress by remember { mutableFloatStateOf(1f) }
     val particles = remember(triggerCount) {
-        val colors = listOf(PopYellow, PopInk, PopSkyBlue, PopRosePink)
+        val colors = listOf(GetiyMint, GetiyAzure, GetiyPeriwinkle, GetiyIce)
         val rng = Random(triggerCount * 31 + 7)
         List(30) {
             ConfettiParticle(

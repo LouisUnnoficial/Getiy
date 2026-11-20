@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep youtubedl-android, FFmpeg, and Aria2c runtime classes
+-keep class com.yausername.** { *; }
+-dontwarn com.yausername.**
+-keep class com.example.data.engine.** { *; }
+

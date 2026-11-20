@@ -12,13 +12,14 @@ data class AppSettings(
     val audioFormat: String = "mp3",
     val concurrency: Int = 2,
     val saveBase: String = "download", // download | movies | music
-    val saveFolder: String = "Grab",
+    val saveFolder: String = "Getiy",
     val fileTemplate: String = MediaHelpers.DEFAULT_FILE_TEMPLATE,
-    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    val themeMode: AppThemeMode = AppThemeMode.DARK,
     val hapticsEnabled: Boolean = true,
     val seenWelcome: Boolean = false,
     val librarySort: LibrarySort = LibrarySort.NEWEST,
     val libraryGroupBySite: Boolean = false,
+    val useAria2c: Boolean = false,
 ) {
     val savePathLabel: String
         get() {

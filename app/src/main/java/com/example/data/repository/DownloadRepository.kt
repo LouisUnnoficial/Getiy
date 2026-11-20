@@ -307,6 +307,7 @@ class DownloadRepository(
                     title = job.title,
                     template = job.template,
                     outputDir = outputDir,
+                    useAria2c = settings.useAria2c,
                 ) { event ->
                     handleEngineEvent(job.id, job.title, event)
                 }

@@ -11,6 +11,7 @@ import com.example.core.GrabHaptics
 import com.example.core.Links
 import com.example.data.db.AppDatabase
 import com.example.data.db.DownloadJobEntity
+import com.example.data.engine.EngineStatus
 import com.example.data.engine.GrabEngine
 import com.example.data.model.DownloadMode
 import com.example.data.model.JobStatus
@@ -130,6 +131,8 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
         buildLibraryItems(list)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val engineStatus: StateFlow<EngineStatus> = engine.engineStatus
+
     private val _engineVersion = MutableStateFlow<String?>(null)
     val engineVersion: StateFlow<String?> = _engineVersion.asStateFlow()
 
@@ -159,7 +162,8 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
     init {
         GrabHaptics.init(appContext)
         viewModelScope.launch {
-            _engineVersion.value = runCatching { engine.initVersion() }.getOrElse { "bundled" }
+            val status = engine.initializeEngines(force = false)
+            _engineVersion.value = status.ytDlpVersion ?: if (status.ytDlpReady) "bundled" else null
         }
         viewModelScope.launch {
             repository.completionEvents.collect { event ->
@@ -196,6 +200,20 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
     fun updateSettings(transform: (AppSettings) -> AppSettings) {
         viewModelScope.launch {
             settingsRepository.update(transform)
+        }
+    }
+
+    fun reinitializeEngines() {
+        viewModelScope.launch {
+            val status = engine.initializeEngines(force = true)
+            _engineVersion.value = status.ytDlpVersion ?: if (status.ytDlpReady) "bundled" else null
+            if (status.allCoreReady) {
+                GrabHaptics.success()
+                showToast("Engines ready", detail = status.summaryLabel)
+            } else {
+                GrabHaptics.error()
+                showToast("Engine check failed", detail = status.error ?: "Could not initialize", isError = true)
+            }
         }
     }
 
@@ -499,9 +517,9 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val res = runCatching {
                 val req = Request.Builder()
-                    .url("https://api.github.com/repos/Asta39/grab/releases/latest")
+                    .url("https://api.github.com/repos/tpxlegend/Getiy/releases/latest")
                     .header("Accept", "application/vnd.github+json")
-                    .header("User-Agent", "Grab-Android/$currentVersion")
+                    .header("User-Agent", "Getiy-Android/$currentVersion")
                     .build()
                 httpClient.newCall(req).execute().use { resp ->
                     if (resp.code == 404) return@use ReleaseCheckState.UpToDate(null)
@@ -511,7 +529,7 @@ class GrabViewModel(application: Application) : AndroidViewModel(application) {
                     val tag = obj.optString("tag_name")
                     val name = obj.optString("name")
                     val notes = obj.optString("body")
-                    val htmlUrl = obj.optString("html_url", "https://github.com/Asta39/grab/releases/latest")
+                    val htmlUrl = obj.optString("html_url", "https://github.com/tpxlegend/Getiy/releases/latest")
                     val cleanTag = tag.removePrefix("v").trim()
                     if (cleanTag.isBlank() || cleanTag == currentVersion.trim()) {
                         ReleaseCheckState.UpToDate(tag.ifBlank { null })

@@ -62,12 +62,13 @@ import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import com.example.core.FileShareHelper
 import com.example.core.GrabHaptics
+import com.example.ui.theme.GetiyAccentBrush
 import com.example.ui.theme.GrabThemeTokens
 import com.example.ui.theme.PopInk
 import com.example.ui.theme.popTintFor
 
-val PopCardShape = RoundedCornerShape(28.dp)
-val PopThumbShape = RoundedCornerShape(20.dp)
+val PopCardShape = RoundedCornerShape(22.dp)
+val PopThumbShape = RoundedCornerShape(16.dp)
 val PopPillShape = RoundedCornerShape(999.dp)
 
 @Composable
@@ -79,14 +80,16 @@ fun PopButton(
     busy: Boolean = false,
     enabled: Boolean = true,
     expand: Boolean = true,
-    height: Dp = 54.dp,
+    height: Dp = 52.dp,
     containerColor: Color? = null,
     contentColor: Color? = null,
+    useGradient: Boolean = false,
+    shape: RoundedCornerShape = RoundedCornerShape(16.dp),
     tag: String? = null,
 ) {
     val pop = GrabThemeTokens.pop
     val bg = containerColor ?: pop.strong
-    val fg = contentColor ?: pop.onStrong
+    val fg = contentColor ?: if (useGradient) Color(0xFF081024) else pop.onStrong
     val active = enabled && !busy
 
     Surface(
@@ -97,8 +100,13 @@ fun PopButton(
             }
         },
         enabled = active,
-        shape = PopPillShape,
-        color = if (active) bg else bg.copy(alpha = 0.45f),
+        shape = shape,
+        color = when {
+            useGradient && active -> Color.Transparent
+            useGradient -> bg.copy(alpha = 0.35f)
+            active -> bg
+            else -> bg.copy(alpha = 0.40f)
+        },
         contentColor = fg,
         modifier = modifier
             .then(if (expand) Modifier.fillMaxWidth() else Modifier)
@@ -106,7 +114,15 @@ fun PopButton(
             .then(if (tag != null) Modifier.testTag(tag) else Modifier),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 22.dp),
+            modifier = Modifier
+                .then(
+                    if (useGradient && active) {
+                        Modifier.background(GetiyAccentBrush, shape)
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -440,7 +456,7 @@ fun PopOptionTile(
         label = "optBg",
     )
     val border by animateColorAsState(
-        targetValue = if (selected) pop.text else Color.Transparent,
+        targetValue = if (selected) pop.strong else Color.Transparent,
         animationSpec = tween(160),
         label = "optBorder",
     )
@@ -463,7 +479,7 @@ fun PopOptionTile(
             Icon(
                 imageVector = if (on) Icons.Rounded.RadioButtonChecked else Icons.Rounded.RadioButtonUnchecked,
                 contentDescription = null,
-                tint = pop.text,
+                tint = if (on) pop.strong else pop.muted,
                 modifier = Modifier.size(22.dp),
             )
         }

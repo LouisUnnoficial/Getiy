@@ -1,5 +1,5 @@
 {
-  "name": "Grab",
+  "name": "Getiy",
   "description": "Paste a link. Get the file. Save video, audio and subtitles from 1,800+ sites with clip trimming, playlists, audio extraction, and ringtone maker.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

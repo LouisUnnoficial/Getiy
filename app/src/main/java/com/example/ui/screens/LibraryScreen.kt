@@ -19,22 +19,24 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -53,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -68,14 +71,15 @@ import com.example.data.model.LibrarySort
 import com.example.data.model.MediaHelpers
 import com.example.ui.components.PopCardShape
 import com.example.ui.components.PopIconButton
-import com.example.ui.components.PopPillShape
 import com.example.ui.components.PopSection
 import com.example.ui.components.PopTag
 import com.example.ui.components.PopThumb
+import com.example.ui.theme.GetiyIce
+import com.example.ui.theme.GetiyMint
+import com.example.ui.theme.GetiyNavy
+import com.example.ui.theme.GetiyNavyDeep
 import com.example.ui.theme.GrabThemeTokens
 import com.example.ui.theme.PopError
-import com.example.ui.theme.PopInk
-import com.example.ui.theme.PopYellow
 import java.io.File
 
 @Composable
@@ -99,8 +103,10 @@ fun LibraryScreen(
     var pickedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showSortMenu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var listMode by remember { mutableStateOf(false) }
 
     val selecting = pickedPaths.isNotEmpty()
+    val totalBytes = remember(items) { items.sumOf { it.sizeBytes } }
 
     val filtered = remember(items, selectedKind, query, sort) {
         val base = items.filter { item ->
@@ -169,30 +175,36 @@ fun LibraryScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(pop.bg)
-            .statusBarsPadding()
             .navigationBarsPadding(),
         contentPadding = PaddingValues(
-            start = 24.dp,
-            end = 24.dp,
-            top = 18.dp,
-            bottom = (116 + extraBottomPadding).dp,
+            start = 20.dp,
+            end = 20.dp,
+            top = 12.dp,
+            bottom = (36 + extraBottomPadding).dp,
         ),
     ) {
+        // Vault Control Bar: Storage Stats + Layout Switch + Sort
         item(key = "library_header") {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(pop.card)
+                    .border(1.dp, pop.track, RoundedCornerShape(18.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (selecting) {
                     PopIconButton(
                         icon = Icons.Rounded.Close,
                         contentDescription = "Cancel selection",
+                        size = 42.dp,
                         onClick = { pickedPaths = emptySet() },
                     )
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(10.dp))
                     Text(
                         text = "${pickedPaths.size} selected",
-                        style = MaterialTheme.typography.headlineSmall.copy(
+                        style = MaterialTheme.typography.titleMedium.copy(
                             color = pop.text,
                             fontWeight = FontWeight.ExtraBold,
                         ),
@@ -201,6 +213,7 @@ fun LibraryScreen(
                     PopIconButton(
                         icon = Icons.Rounded.IosShare,
                         contentDescription = "Share selected files",
+                        size = 42.dp,
                         onClick = {
                             FileShareHelper.shareFiles(context, pickedPaths.toList())
                         },
@@ -212,22 +225,36 @@ fun LibraryScreen(
                         contentDescription = "Delete selected files",
                         background = pop.errorSoft,
                         foreground = PopError,
+                        size = 42.dp,
                         onClick = { confirmDelete = true },
                         tag = "library_delete_selected",
                     )
                 } else {
-                    Text(
-                        text = "Library",
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.ExtraBold,
-                            color = pop.text,
-                        ),
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Media Vault",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                color = pop.text,
+                            ),
+                        )
+                        Text(
+                            text = "${items.size} ${if (items.size == 1) "file" else "files"} · ${MediaHelpers.formatBytes(totalBytes) ?: "0 KB"}",
+                            style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
+                        )
+                    }
+                    PopIconButton(
+                        icon = if (listMode) Icons.Rounded.GridView else Icons.Rounded.ViewAgenda,
+                        contentDescription = if (listMode) "Switch to grid view" else "Switch to list view",
+                        size = 42.dp,
+                        onClick = { listMode = !listMode },
                     )
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
                     Box {
                         PopIconButton(
                             icon = Icons.Rounded.Sort,
                             contentDescription = "Sort library",
+                            size = 42.dp,
                             onClick = { showSortMenu = true },
                             tag = "library_sort_button",
                         )
@@ -254,7 +281,7 @@ fun LibraryScreen(
                     }
                 }
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
         }
 
         if (items.isNotEmpty()) {
@@ -262,22 +289,23 @@ fun LibraryScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(PopPillShape)
+                        .clip(RoundedCornerShape(16.dp))
                         .background(pop.field)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .border(1.dp, pop.track, RoundedCornerShape(16.dp))
+                        .padding(horizontal = 14.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Search,
                         contentDescription = null,
                         tint = pop.muted,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(19.dp),
                     )
                     Spacer(Modifier.width(10.dp))
                     Box(modifier = Modifier.weight(1f)) {
                         if (query.isEmpty()) {
                             Text(
-                                text = "Search saved files",
+                                text = "Filter vault by title or site…",
                                 style = MaterialTheme.typography.bodyMedium.copy(color = pop.muted),
                             )
                         }
@@ -302,7 +330,7 @@ fun LibraryScreen(
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -310,7 +338,7 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     val chipColors = FilterChipDefaults.filterChipColors(
-                        containerColor = pop.soft,
+                        containerColor = pop.card,
                         selectedContainerColor = pop.strong,
                         labelColor = pop.text,
                         selectedLabelColor = pop.onStrong,
@@ -321,9 +349,9 @@ fun LibraryScreen(
                             GrabHaptics.selection()
                             selectedKind = null
                         },
-                        label = { Text("All") },
-                        shape = PopPillShape,
-                        border = null,
+                        label = { Text("All", fontWeight = FontWeight.Bold) },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, if (selectedKind == null) pop.strong else pop.track),
                         colors = chipColors,
                     )
                     LibraryKind.entries.forEach { k ->
@@ -333,9 +361,9 @@ fun LibraryScreen(
                                 GrabHaptics.selection()
                                 selectedKind = if (selectedKind == k) null else k
                             },
-                            label = { Text(k.label) },
-                            shape = PopPillShape,
-                            border = null,
+                            label = { Text(k.label, fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, if (selectedKind == k) pop.strong else pop.track),
                             colors = chipColors,
                         )
                     }
@@ -345,13 +373,13 @@ fun LibraryScreen(
                             GrabHaptics.selection()
                             onGroupChange(!groupBySite)
                         },
-                        label = { Text("Group by site") },
-                        shape = PopPillShape,
-                        border = null,
+                        label = { Text("By site", fontWeight = FontWeight.Bold) },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, if (groupBySite) pop.strong else pop.track),
                         colors = chipColors,
                     )
                 }
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(14.dp))
             }
         }
 
@@ -360,26 +388,30 @@ fun LibraryScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 72.dp),
+                        .padding(top = 48.dp)
+                        .clip(PopCardShape)
+                        .background(pop.card)
+                        .border(1.dp, pop.track, PopCardShape)
+                        .padding(horizontal = 24.dp, vertical = 36.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(78.dp)
-                            .clip(CircleShape)
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(18.dp))
                             .background(pop.soft),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.VideoLibrary,
                             contentDescription = null,
-                            tint = pop.text,
-                            modifier = Modifier.size(36.dp),
+                            tint = pop.strong,
+                            modifier = Modifier.size(30.dp),
                         )
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(14.dp))
                     Text(
-                        text = if (items.isEmpty()) "Your library is empty" else "No matching files",
+                        text = if (items.isEmpty()) "Your vault is empty" else "No matching files",
                         style = MaterialTheme.typography.titleLarge.copy(
                             color = pop.text,
                             fontWeight = FontWeight.ExtraBold,
@@ -390,7 +422,7 @@ fun LibraryScreen(
                         text = if (items.isEmpty()) {
                             "Saved videos, audio tracks and subtitles appear here."
                         } else {
-                            "Try clearing your search or filter."
+                            "Try clearing your search or category filter."
                         },
                         style = MaterialTheme.typography.bodyMedium.copy(color = pop.muted),
                     )
@@ -403,37 +435,62 @@ fun LibraryScreen(
                         PopSection(siteTitle)
                     }
                 }
-                val rows = groupItems.chunked(2)
-                items(rows, key = { pair -> pair.joinToString("|") { it.path } }) { pair ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        pair.forEach { item ->
-                            LibraryGridTile(
-                                item = item,
-                                selecting = selecting,
-                                selected = item.path in pickedPaths,
-                                onClick = {
-                                    if (selecting) {
-                                        toggleSelect(item.path)
-                                    } else {
-                                        when (item.kind) {
-                                            LibraryKind.VIDEO -> onPlayVideo(item)
-                                            LibraryKind.AUDIO -> onPlayAudio(item)
-                                            LibraryKind.SUBTITLES -> onOpenDetail(item.jobId)
-                                        }
+                if (listMode) {
+                    items(groupItems, key = { it.path }) { item ->
+                        VaultListRow(
+                            item = item,
+                            selecting = selecting,
+                            selected = item.path in pickedPaths,
+                            onClick = {
+                                if (selecting) {
+                                    toggleSelect(item.path)
+                                } else {
+                                    when (item.kind) {
+                                        LibraryKind.VIDEO -> onPlayVideo(item)
+                                        LibraryKind.AUDIO -> onPlayAudio(item)
+                                        LibraryKind.SUBTITLES -> onOpenDetail(item.jobId)
                                     }
-                                },
-                                onLongClick = { toggleSelect(item.path) },
-                                onOpenDetail = { onOpenDetail(item.jobId) },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        if (pair.size == 1) {
-                            Spacer(Modifier.weight(1f))
+                                }
+                            },
+                            onLongClick = { toggleSelect(item.path) },
+                            onOpenDetail = { onOpenDetail(item.jobId) },
+                            onShare = { FileShareHelper.shareFiles(context, listOf(item.path), item.title) },
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    }
+                } else {
+                    val rows = groupItems.chunked(2)
+                    items(rows, key = { pair -> pair.joinToString("|") { it.path } }) { pair ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            pair.forEach { item ->
+                                VaultPosterCard(
+                                    item = item,
+                                    selecting = selecting,
+                                    selected = item.path in pickedPaths,
+                                    onClick = {
+                                        if (selecting) {
+                                            toggleSelect(item.path)
+                                        } else {
+                                            when (item.kind) {
+                                                LibraryKind.VIDEO -> onPlayVideo(item)
+                                                LibraryKind.AUDIO -> onPlayAudio(item)
+                                                LibraryKind.SUBTITLES -> onOpenDetail(item.jobId)
+                                            }
+                                        }
+                                    },
+                                    onLongClick = { toggleSelect(item.path) },
+                                    onOpenDetail = { onOpenDetail(item.jobId) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            if (pair.size == 1) {
+                                Spacer(Modifier.weight(1f))
+                            }
                         }
                     }
                 }
@@ -444,7 +501,7 @@ fun LibraryScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LibraryGridTile(
+private fun VaultPosterCard(
     item: LibraryItem,
     selecting: Boolean,
     selected: Boolean,
@@ -456,109 +513,208 @@ private fun LibraryGridTile(
     val pop = GrabThemeTokens.pop
     val ext = File(item.path).extension.uppercase()
 
-    Column(
+    Box(
         modifier = modifier
+            .aspectRatio(0.84f)
             .clip(PopCardShape)
-            .background(if (selected) pop.soft else pop.card)
             .border(
-                BorderStroke(if (selected) 2.dp else 0.dp, if (selected) pop.text else Color.Transparent),
+                BorderStroke(if (selected) 2.dp else 1.dp, if (selected) pop.strong else pop.track),
                 PopCardShape,
             )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick,
-            )
-            .padding(10.dp),
+            ),
     ) {
+        PopThumb(
+            seed = item.path,
+            url = item.thumbnail,
+            audio = item.kind == LibraryKind.AUDIO,
+            subtitles = item.kind == LibraryKind.SUBTITLES,
+            modifier = Modifier.fillMaxSize(),
+            shape = PopCardShape,
+        )
+
+        // Deep midnight navy gradient scrim for crisp title overlay
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f),
-        ) {
-            PopThumb(
-                seed = item.path,
-                url = item.thumbnail,
-                audio = item.kind == LibraryKind.AUDIO,
-                subtitles = item.kind == LibraryKind.SUBTITLES,
-                modifier = Modifier.fillMaxSize(),
-            )
-            PopTag(
-                label = ext.ifEmpty { item.kind.label },
-                background = PopInk.copy(alpha = 0.82f),
-                contentColor = PopYellow,
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Transparent,
+                        0.45f to GetiyNavy.copy(alpha = 0.25f),
+                        1.0f to GetiyNavy.copy(alpha = 0.94f),
+                    ),
+                ),
+        )
+
+        // Top-left format pill
+        PopTag(
+            label = ext.ifEmpty { item.kind.label },
+            background = GetiyNavy.copy(alpha = 0.85f),
+            contentColor = GetiyMint,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(10.dp),
+        )
+
+        // Top-right info / selection badge
+        if (selecting) {
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp),
-            )
-            if (selecting) {
+                    .align(Alignment.TopEnd)
+                    .padding(10.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) GetiyMint else GetiyNavy.copy(alpha = 0.65f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = "Selected",
+                        tint = GetiyNavyDeep,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        } else {
+            IconButton(
+                onClick = {
+                    GrabHaptics.selection()
+                    onOpenDetail()
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(2.dp)
+                    .size(38.dp),
+            ) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(if (selected) PopYellow else PopInk.copy(alpha = 0.55f)),
+                        .background(GetiyNavy.copy(alpha = 0.72f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (selected) {
-                        Icon(
-                            imageVector = Icons.Rounded.CheckCircle,
-                            contentDescription = "Selected",
-                            tint = PopInk,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            } else {
-                IconButton(
-                    onClick = {
-                        GrabHaptics.selection()
-                        onOpenDetail()
-                    },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(2.dp)
-                        .size(36.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(PopInk.copy(alpha = 0.65f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Info,
-                            contentDescription = "Download details",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = "Download details",
+                        tint = GetiyIce,
+                        modifier = Modifier.size(16.dp),
+                    )
                 }
             }
         }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = item.title,
-            style = MaterialTheme.typography.titleSmall.copy(
-                color = pop.text,
-                fontWeight = FontWeight.Bold,
-            ),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(4.dp))
-        val sub = listOfNotNull(
-            item.site,
-            MediaHelpers.formatBytes(item.sizeBytes),
-        ).joinToString(" · ")
-        if (sub.isNotEmpty()) {
+
+        // Bottom title & size overlay
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(12.dp),
+        ) {
             Text(
-                text = sub,
-                style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
-                maxLines = 1,
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    color = GetiyIce,
+                    fontWeight = FontWeight.Bold,
+                ),
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.height(3.dp))
+            val sub = listOfNotNull(
+                item.site,
+                MediaHelpers.formatBytes(item.sizeBytes),
+            ).joinToString(" · ")
+            if (sub.isNotEmpty()) {
+                Text(
+                    text = sub,
+                    style = MaterialTheme.typography.labelSmall.copy(color = GetiyIce.copy(alpha = 0.72f)),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun VaultListRow(
+    item: LibraryItem,
+    selecting: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onOpenDetail: () -> Unit,
+    onShare: () -> Unit,
+) {
+    val pop = GrabThemeTokens.pop
+    val ext = File(item.path).extension.uppercase()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(PopCardShape)
+            .background(if (selected) pop.soft else pop.card)
+            .border(
+                BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) pop.strong else pop.track),
+                PopCardShape,
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PopThumb(
+            seed = item.path,
+            url = item.thumbnail,
+            audio = item.kind == LibraryKind.AUDIO,
+            subtitles = item.kind == LibraryKind.SUBTITLES,
+            modifier = Modifier.size(64.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    color = pop.text,
+                    fontWeight = FontWeight.Bold,
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                PopTag(label = ext.ifEmpty { item.kind.label })
+                val sub = listOfNotNull(item.site, MediaHelpers.formatBytes(item.sizeBytes)).joinToString(" · ")
+                if (sub.isNotEmpty()) {
+                    Text(
+                        text = sub,
+                        style = MaterialTheme.typography.labelSmall.copy(color = pop.muted),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        if (selecting) {
+            Icon(
+                imageVector = Icons.Rounded.CheckCircle,
+                contentDescription = if (selected) "Selected" else "Not selected",
+                tint = if (selected) pop.strong else pop.muted,
+                modifier = Modifier.padding(end = 6.dp),
+            )
+        } else {
+            IconButton(onClick = onShare) {
+                Icon(Icons.Rounded.IosShare, contentDescription = "Share file", tint = pop.muted)
+            }
+            IconButton(onClick = onOpenDetail) {
+                Icon(Icons.Rounded.Info, contentDescription = "Details", tint = pop.muted)
+            }
         }
     }
 }

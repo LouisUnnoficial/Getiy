@@ -1,7 +1,9 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
@@ -49,8 +53,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,14 +70,17 @@ import com.example.data.settings.AppSettings
 import com.example.ui.components.PopButton
 import com.example.ui.components.PopCardShape
 import com.example.ui.components.PopIconButton
-import com.example.ui.components.PopPillShape
 import com.example.ui.components.PopProgressBar
 import com.example.ui.components.PopSection
+import com.example.ui.components.PopTag
 import com.example.ui.components.PopThumb
+import com.example.ui.theme.GetiyAccentBrush
+import com.example.ui.theme.GetiyIce
+import com.example.ui.theme.GetiyMint
+import com.example.ui.theme.GetiyNavy
+import com.example.ui.theme.GetiyNavyDeep
 import com.example.ui.theme.GrabThemeTokens
 import com.example.ui.theme.PopError
-import com.example.ui.theme.PopInk
-import com.example.ui.theme.PopYellow
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
@@ -160,189 +168,230 @@ fun DownloadDetailScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(pop.bg)
-            .statusBarsPadding()
             .navigationBarsPadding(),
-        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 10.dp, bottom = 48.dp),
+        contentPadding = PaddingValues(bottom = 48.dp),
     ) {
-        item(key = "detail_topbar") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PopIconButton(
-                    icon = Icons.Rounded.ArrowBack,
-                    contentDescription = "Back",
-                    onClick = onBack,
-                    tag = "detail_back_button",
-                )
-                Spacer(Modifier.weight(1f))
-                PopIconButton(
-                    icon = Icons.Rounded.DeleteSweep,
-                    contentDescription = "Remove from history",
-                    onClick = {
-                        onRemoveFromHistory(job.id)
-                        onBack()
-                    },
-                    tag = "detail_remove_history_button",
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-        }
-
-        item(key = "detail_preview") {
+        // Full-bleed edge-to-edge hero media preview with floating glass controls
+        item(key = "detail_hero_banner") {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .clip(PopCardShape)
+                    .aspectRatio(16f / 10.5f)
                     .clickable(enabled = previewPath != null) {
                         previewPath?.let { path ->
                             val item = asLibraryItem(path)
                             if (item.kind == LibraryKind.AUDIO) onPlayAudio(item) else onPlayVideo(item)
                         }
                     },
-                contentAlignment = Alignment.Center,
             ) {
                 PopThumb(
                     seed = job.id,
                     url = job.thumbnail,
                     audio = previewPath != null && MediaHelpers.kindOf(previewPath) == LibraryKind.AUDIO,
                     modifier = Modifier.fillMaxSize(),
-                    shape = PopCardShape,
+                    shape = RoundedCornerShape(0.dp),
                 )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0.0f to GetiyNavy.copy(alpha = 0.65f),
+                                0.45f to Color.Transparent,
+                                1.0f to pop.bg,
+                            ),
+                        ),
+                )
+                // Floating top bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PopIconButton(
+                        icon = Icons.Rounded.ArrowBack,
+                        contentDescription = "Back",
+                        background = GetiyNavy.copy(alpha = 0.72f),
+                        foreground = GetiyIce,
+                        onClick = onBack,
+                        tag = "detail_back_button",
+                    )
+                    Spacer(Modifier.weight(1f))
+                    PopIconButton(
+                        icon = Icons.Rounded.DeleteSweep,
+                        contentDescription = "Remove from history",
+                        background = GetiyNavy.copy(alpha = 0.72f),
+                        foreground = GetiyIce,
+                        onClick = {
+                            onRemoveFromHistory(job.id)
+                            onBack()
+                        },
+                        tag = "detail_remove_history_button",
+                    )
+                }
+
                 if (previewPath != null) {
                     Box(
                         modifier = Modifier
-                            .size(58.dp)
+                            .align(Alignment.Center)
+                            .size(62.dp)
                             .clip(CircleShape)
-                            .background(PopInk.copy(alpha = 0.78f)),
+                            .background(GetiyAccentBrush),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.PlayArrow,
                             contentDescription = "Play media",
-                            tint = PopYellow,
+                            tint = GetiyNavyDeep,
                             modifier = Modifier.size(34.dp),
                         )
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
         }
 
-        item(key = "detail_title") {
-            Text(
-                text = job.title,
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    color = pop.text,
-                    fontWeight = FontWeight.ExtraBold,
-                ),
-            )
-            Spacer(Modifier.height(6.dp))
-            val dateStr = job.finishedAt?.let {
-                DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it))
-            }
-            val meta = listOfNotNull(job.site, job.downloadMode.label, dateStr).joinToString(" · ")
-            Text(
-                text = meta,
-                style = MaterialTheme.typography.bodyMedium.copy(color = pop.muted),
-            )
-            Spacer(Modifier.height(18.dp))
-        }
-
-        item(key = "detail_actions") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+        // Overlapping Info & Actions Studio Card
+        item(key = "detail_info_card") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset(y = (-20).dp)
+                    .padding(horizontal = 20.dp)
+                    .clip(PopCardShape)
+                    .background(pop.card)
+                    .border(1.dp, pop.track, PopCardShape)
+                    .padding(18.dp),
             ) {
-                PopButton(
-                    label = "Download again",
-                    icon = Icons.Rounded.Refresh,
-                    height = 50.dp,
-                    onClick = { onDownloadAgain(job.url) },
-                    modifier = Modifier.weight(1f),
-                    tag = "detail_download_again_button",
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    PopTag(job.formatBadge)
+                    if (!job.site.isNullOrBlank()) {
+                        Text(
+                            text = job.site,
+                            style = MaterialTheme.typography.labelMedium.copy(color = pop.muted, fontWeight = FontWeight.Bold),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = job.title,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        color = pop.text,
+                        fontWeight = FontWeight.ExtraBold,
+                    ),
                 )
-                PopIconButton(
-                    icon = Icons.Rounded.IosShare,
-                    contentDescription = "Share all files",
-                    onClick = if (existingFiles.isEmpty()) null else {
-                        { FileShareHelper.shareFiles(context, existingFiles, job.title) }
-                    },
-                    tag = "detail_share_all_button",
+                Spacer(Modifier.height(4.dp))
+                val dateStr = job.finishedAt?.let {
+                    DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it))
+                }
+                val meta = listOfNotNull(job.downloadMode.label, dateStr).joinToString(" · ")
+                Text(
+                    text = meta,
+                    style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
                 )
-                PopIconButton(
-                    icon = Icons.Rounded.Link,
-                    contentDescription = "Copy link",
-                    onClick = {
-                        FileShareHelper.copyToClipboard(context, "Video link", job.url)
-                        onCopyLink(job.url)
-                    },
-                    tag = "detail_copy_link_button",
-                )
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    PopButton(
+                        label = "Redownload",
+                        icon = Icons.Rounded.Refresh,
+                        useGradient = true,
+                        height = 48.dp,
+                        onClick = { onDownloadAgain(job.url) },
+                        modifier = Modifier.weight(1f),
+                        tag = "detail_download_again_button",
+                    )
+                    PopIconButton(
+                        icon = Icons.Rounded.IosShare,
+                        contentDescription = "Share all files",
+                        onClick = if (existingFiles.isEmpty()) null else {
+                            { FileShareHelper.shareFiles(context, existingFiles, job.title) }
+                        },
+                        tag = "detail_share_all_button",
+                    )
+                    PopIconButton(
+                        icon = Icons.Rounded.Link,
+                        contentDescription = "Copy link",
+                        onClick = {
+                            FileShareHelper.copyToClipboard(context, "Video link", job.url)
+                            onCopyLink(job.url)
+                        },
+                        tag = "detail_copy_link_button",
+                    )
+                }
             }
-            Spacer(Modifier.height(24.dp))
         }
 
         if (videos.isNotEmpty()) {
             item(key = "detail_extract_audio") {
-                PopSection("Extract audio")
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(PopCardShape)
-                        .background(pop.card)
-                        .padding(16.dp),
-                ) {
-                    Text(
-                        text = "Pull an audio file straight from this video without downloading again.",
-                        style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    if (extraction?.running == true) {
-                        PopProgressBar(
-                            progress = (extraction.progress / 100.0).toFloat().takeIf { it > 0f },
-                        )
-                        Spacer(Modifier.height(8.dp))
+                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                    PopSection("Extract Audio Track")
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(PopCardShape)
+                            .background(pop.card)
+                            .border(1.dp, pop.track, PopCardShape)
+                            .padding(16.dp),
+                    ) {
                         Text(
-                            text = "Extracting ${extraction.format.uppercase()} · ${extraction.progress.roundToInt()}%",
-                            style = MaterialTheme.typography.labelMedium.copy(color = pop.text),
+                            text = "Convert this video locally via FFmpeg without redownloading.",
+                            style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
                         )
-                    } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            AppSettings.audioFormats.forEach { fmt ->
-                                FilterChip(
-                                    selected = false,
-                                    onClick = {
-                                        GrabHaptics.light()
-                                        onExtractAudio(job, videos.first(), fmt)
-                                    },
-                                    label = { Text(fmt.uppercase(), fontWeight = FontWeight.Bold) },
-                                    shape = PopPillShape,
-                                    border = null,
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        containerColor = pop.soft,
-                                        labelColor = pop.text,
-                                    ),
+                        Spacer(Modifier.height(12.dp))
+                        if (extraction?.running == true) {
+                            PopProgressBar(
+                                progress = (extraction.progress / 100.0).toFloat().takeIf { it > 0f },
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "Extracting ${extraction.format.uppercase()} · ${extraction.progress.roundToInt()}%",
+                                style = MaterialTheme.typography.labelMedium.copy(color = pop.strong, fontWeight = FontWeight.Bold),
+                            )
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AppSettings.audioFormats.forEach { fmt ->
+                                    FilterChip(
+                                        selected = false,
+                                        onClick = {
+                                            GrabHaptics.light()
+                                            onExtractAudio(job, videos.first(), fmt)
+                                        },
+                                        label = { Text(fmt.uppercase(), fontWeight = FontWeight.Bold) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, pop.track),
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            containerColor = pop.soft,
+                                            labelColor = pop.text,
+                                        ),
+                                    )
+                                }
+                            }
+                            if (!extraction?.error.isNullOrBlank()) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = extraction!!.error!!,
+                                    style = MaterialTheme.typography.bodySmall.copy(color = PopError),
                                 )
                             }
                         }
-                        if (!extraction?.error.isNullOrBlank()) {
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                text = extraction!!.error!!,
-                                style = MaterialTheme.typography.bodySmall.copy(color = PopError),
-                            )
-                        }
                     }
+                    Spacer(Modifier.height(20.dp))
                 }
-                Spacer(Modifier.height(24.dp))
             }
         }
 
         item(key = "detail_files_header") {
-            PopSection("Files (${existingFiles.size})")
+            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                PopSection("Saved Files (${existingFiles.size})")
+            }
         }
 
         if (existingFiles.isEmpty()) {
@@ -350,6 +399,7 @@ fun DownloadDetailScreen(
                 Text(
                     text = "No files found on disk for this download.",
                     style = MaterialTheme.typography.bodyMedium.copy(color = pop.muted),
+                    modifier = Modifier.padding(horizontal = 20.dp),
                 )
             }
         } else {
@@ -365,9 +415,10 @@ fun DownloadDetailScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 10.dp)
+                        .padding(horizontal = 20.dp, vertical = 5.dp)
                         .clip(PopCardShape)
                         .background(pop.card)
+                        .border(1.dp, pop.track, PopCardShape)
                         .clickable {
                             when (kind) {
                                 LibraryKind.VIDEO -> onPlayVideo(libItem)
@@ -381,11 +432,11 @@ fun DownloadDetailScreen(
                     Box(
                         modifier = Modifier
                             .size(42.dp)
-                            .clip(CircleShape)
+                            .clip(RoundedCornerShape(12.dp))
                             .background(pop.soft),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(icon, contentDescription = null, tint = pop.text, modifier = Modifier.size(20.dp))
+                        Icon(icon, contentDescription = null, tint = pop.strong, modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {

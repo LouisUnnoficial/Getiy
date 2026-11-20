@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Grab"
+rootProject.name = "Getiy"
 
 include(":app")

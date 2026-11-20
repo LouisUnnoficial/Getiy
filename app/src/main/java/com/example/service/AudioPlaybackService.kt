@@ -40,7 +40,7 @@ class AudioPlaybackService : Service() {
 
         val active = intent?.getBooleanExtra(EXTRA_ACTIVE, false) ?: false
         val title = intent?.getStringExtra(EXTRA_TITLE) ?: "Playing audio"
-        val subtitle = intent?.getStringExtra(EXTRA_SUBTITLE) ?: "Grab"
+        val subtitle = intent?.getStringExtra(EXTRA_SUBTITLE) ?: "Getiy"
         val isPlaying = intent?.getBooleanExtra(EXTRA_PLAYING, false) ?: false
 
         val notification = buildNotification(this, title, subtitle, isPlaying)
@@ -80,7 +80,7 @@ class AudioPlaybackService : Service() {
             val intent = Intent(context, AudioPlaybackService::class.java)
                 .putExtra(EXTRA_ACTIVE, active)
                 .putExtra(EXTRA_TITLE, title ?: "")
-                .putExtra(EXTRA_SUBTITLE, subtitle ?: "Grab")
+                .putExtra(EXTRA_SUBTITLE, subtitle ?: "Getiy")
                 .putExtra(EXTRA_PLAYING, isPlaying)
             runCatching {
                 if (active) {

@@ -15,12 +15,20 @@ import com.example.data.model.MediaHelpers
 import com.example.data.model.MediaInfo
 import com.example.data.settings.AppSettings
 import com.example.service.DownloadService
+import com.yausername.aria2c.Aria2c
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 sealed class EngineEvent {
@@ -38,14 +46,47 @@ sealed class EngineEvent {
     data class Error(val jobId: String, val message: String, val isNetworkError: Boolean) : EngineEvent()
 }
 
+data class EngineStatus(
+    val initializing: Boolean = true,
+    val ytDlpReady: Boolean = false,
+    val ytDlpVersion: String? = null,
+    val ffmpegReady: Boolean = false,
+    val ffmpegVersion: String? = null,
+    val aria2cReady: Boolean = false,
+    val youtubedlAndroidVersion: String = GrabEngine.YOUTUBEDL_ANDROID_VERSION,
+    val error: String? = null,
+) {
+    val allCoreReady: Boolean
+        get() = ytDlpReady && ffmpegReady
+
+    val summaryLabel: String
+        get() = when {
+            initializing -> "Initializing engines…"
+            allCoreReady -> buildString {
+                append("yt-dlp ")
+                append(ytDlpVersion ?: "bundled")
+                append(" · FFmpeg ")
+                append(ffmpegVersion ?: "ready")
+                if (aria2cReady) append(" · Aria2c")
+            }
+            else -> error ?: "Engine initialization incomplete"
+        }
+}
+
 /**
- * Native Android yt-dlp & FFmpeg engine powered by youtubedl-android.
- * Ported directly from Asta39/grab's EnginePlugin.kt and RingtonePlugin.kt.
+ * Native Android yt-dlp, FFmpeg, and Aria2c engine powered by youtubedl-android.
+ * All native binaries are packaged directly inside the APK (zero dynamic code loading).
  */
 class GrabEngine(private val context: Context) {
 
+    private val appContext = context.applicationContext
+    private val initMutex = Mutex()
+
     @Volatile
     private var initialized = false
+
+    private val _engineStatus = MutableStateFlow(EngineStatus(initializing = true))
+    val engineStatus: StateFlow<EngineStatus> = _engineStatus.asStateFlow()
 
     private val activeJobs = ConcurrentHashMap<String, Pair<String, Float>>()
     private val ffmpegProcesses = ConcurrentHashMap<String, Process>()
@@ -58,22 +99,150 @@ class GrabEngine(private val context: Context) {
         RegexOption.IGNORE_CASE,
     )
 
-    @Synchronized
-    private fun ensureReady() {
-        if (initialized) return
-        YoutubeDL.getInstance().init(context.applicationContext)
-        FFmpeg.getInstance().init(context.applicationContext)
-        initialized = true
+    /**
+     * Initializes youtubedl-android (yt-dlp + Python), FFmpeg, and Aria2c and probes their binaries.
+     * Safe to call repeatedly; retries cleanly if a previous attempt failed or [force] is true.
+     */
+    suspend fun initializeEngines(force: Boolean = false): EngineStatus = withContext(Dispatchers.IO) {
+        initMutex.withLock {
+            if (initialized && !force && _engineStatus.value.allCoreReady) {
+                return@withLock _engineStatus.value
+            }
+            _engineStatus.value = _engineStatus.value.copy(initializing = true, error = null)
+
+            var ytReady = false
+            var ytVersion: String? = null
+            var ffReady = false
+            var ffVersion: String? = null
+            var ariaReady = false
+            val errors = mutableListOf<String>()
+
+            // 1. Initialize core yt-dlp + Python runtime (youtubedl-android:library)
+            runCatching {
+                YoutubeDL.getInstance().init(appContext)
+                ytReady = true
+                ytVersion = probeYtDlpVersion()
+            }.onFailure { err ->
+                errors.add("yt-dlp: ${cleanEngineError(err)}")
+            }
+
+            // 2. Initialize bundled FFmpeg runtime (youtubedl-android:ffmpeg)
+            runCatching {
+                FFmpeg.getInstance().init(appContext)
+                ffVersion = probeFfmpegVersion()
+                ffReady = resolveFfmpegBinary() != null || ffVersion != null
+                if (!ffReady) {
+                    errors.add("FFmpeg binary could not be located after initialization")
+                }
+            }.onFailure { err ->
+                errors.add("FFmpeg: ${cleanEngineError(err)}")
+            }
+
+            // 3. Initialize optional Aria2c multi-connection engine (youtubedl-android:aria2c)
+            ariaReady = runCatching {
+                Aria2c.getInstance().init(appContext)
+                true
+            }.getOrDefault(false)
+
+            initialized = ytReady && ffReady
+            val status = EngineStatus(
+                initializing = false,
+                ytDlpReady = ytReady,
+                ytDlpVersion = ytVersion,
+                ffmpegReady = ffReady,
+                ffmpegVersion = ffVersion,
+                aria2cReady = ariaReady,
+                error = errors.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+            )
+            _engineStatus.value = status
+            status
+        }
     }
 
-    suspend fun initVersion(): String = withContext(Dispatchers.IO) {
-        ensureReady()
-        YoutubeDL.getInstance().versionName(context.applicationContext)
-            ?: runCatching {
-                YoutubeDL.getInstance().execute(
-                    YoutubeDLRequest(emptyList()).apply { addOption("--version") },
-                ).out.trim()
-            }.getOrDefault("bundled")
+    private suspend fun ensureReady() {
+        val status = initializeEngines(force = false)
+        if (!status.ytDlpReady) {
+            throw IllegalStateException(status.error ?: "yt-dlp engine failed to initialize")
+        }
+    }
+
+    private suspend fun ensureFfmpegReady(): File {
+        val status = initializeEngines(force = false)
+        val binary = resolveFfmpegBinary()
+        if (!status.ffmpegReady || binary == null) {
+            throw IllegalStateException(
+                status.error ?: "FFmpeg binary not found. Open Settings → Verify engines to re-initialize.",
+            )
+        }
+        return binary
+    }
+
+    suspend fun initVersion(): String {
+        val status = initializeEngines(force = false)
+        return status.ytDlpVersion ?: "bundled"
+    }
+
+    private fun probeYtDlpVersion(): String {
+        val fromLibrary = runCatching {
+            YoutubeDL.getInstance().versionName(appContext)?.trim()
+        }.getOrNull()
+        if (!fromLibrary.isNullOrBlank()) return fromLibrary
+
+        return runCatching {
+            val req = YoutubeDLRequest(emptyList()).apply { addOption("--version") }
+            YoutubeDL.getInstance().execute(req).out.lines()
+                .map { it.trim() }
+                .firstOrNull { it.isNotEmpty() }
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "bundled"
+    }
+
+    private fun probeFfmpegVersion(): String? {
+        val bin = resolveFfmpegBinary() ?: return null
+        return runCatching {
+            val pb = buildFfmpegProcess(listOf(bin.absolutePath, "-version"))
+            val process = pb.start()
+            val firstLine = process.inputStream.bufferedReader().use { it.readLine() }
+            process.waitFor()
+            parseFfmpegVersionLine(firstLine)
+        }.getOrNull()
+    }
+
+    private fun resolveFfmpegBinary(): File? {
+        val candidates = listOf(
+            File(appContext.applicationInfo.nativeLibraryDir, "libffmpeg.so"),
+            File(appContext.noBackupFilesDir, "youtubedl-android/packages/ffmpeg/usr/bin/ffmpeg"),
+            File(appContext.filesDir, "youtubedl-android/packages/ffmpeg/usr/bin/ffmpeg"),
+        )
+        return candidates.firstOrNull { it.exists() && it.isFile }
+    }
+
+    private fun buildFfmpegProcess(cmd: List<String>): ProcessBuilder {
+        val pb = ProcessBuilder(cmd).redirectErrorStream(true)
+        val env = pb.environment()
+
+        val packagesNoBackup = File(appContext.noBackupFilesDir, "youtubedl-android/packages")
+        val packagesFiles = File(appContext.filesDir, "youtubedl-android/packages")
+        val nativeLibDir = appContext.applicationInfo.nativeLibraryDir
+
+        val libPaths = listOfNotNull(
+            File(packagesNoBackup, "ffmpeg/usr/lib").absolutePath,
+            File(packagesNoBackup, "python/usr/lib").absolutePath,
+            File(packagesFiles, "ffmpeg/usr/lib").absolutePath,
+            File(packagesFiles, "python/usr/lib").absolutePath,
+            nativeLibDir,
+            System.getenv("LD_LIBRARY_PATH")?.takeIf { it.isNotBlank() },
+        ).distinct().joinToString(":")
+        env["LD_LIBRARY_PATH"] = libPaths
+
+        val binPaths = listOfNotNull(
+            nativeLibDir,
+            File(packagesNoBackup, "ffmpeg/usr/bin").absolutePath,
+            File(packagesFiles, "ffmpeg/usr/bin").absolutePath,
+            System.getenv("PATH")?.takeIf { it.isNotBlank() },
+        ).distinct().joinToString(":")
+        env["PATH"] = binPaths
+
+        return pb
     }
 
     fun resolveOutputDir(settings: AppSettings): File {
@@ -82,40 +251,56 @@ class GrabEngine(private val context: Context) {
             "music" -> Environment.DIRECTORY_MUSIC
             else -> Environment.DIRECTORY_DOWNLOADS
         }
+        @Suppress("DEPRECATION")
         val publicRoot = Environment.getExternalStoragePublicDirectory(envDir)
         val target = File(publicRoot, settings.saveFolder)
-        val writable = runCatching {
-            if (!target.exists()) target.mkdirs()
-            target.exists() && target.canWrite()
-        }.getOrDefault(false)
+        val writable = isDirectoryActuallyWritable(target)
         if (writable) return target
 
-        // Fallback to app-scoped external storage if public folder is restricted
-        val appFallback = File(context.getExternalFilesDir(envDir) ?: context.filesDir, settings.saveFolder)
+        // Fallback to app-scoped external storage if public folder is restricted by scoped storage
+        val appFallback = File(appContext.getExternalFilesDir(envDir) ?: appContext.filesDir, settings.saveFolder)
         if (!appFallback.exists()) appFallback.mkdirs()
         return appFallback
     }
 
+    private fun isDirectoryActuallyWritable(dir: File): Boolean = runCatching {
+        if (!dir.exists()) dir.mkdirs()
+        if (!dir.exists() || !dir.isDirectory) return@runCatching false
+        val probe = File.createTempFile(".getiy_probe_", ".tmp", dir)
+        probe.delete()
+        true
+    }.getOrDefault(false)
+
     suspend fun fetch(url: String): MediaInfo = withContext(Dispatchers.IO) {
         ensureReady()
-        val req = YoutubeDLRequest(url)
-        val jar = File(context.cacheDir, "preview-cookies.txt")
-        jar.writeText("# Netscape HTTP Cookie File\n")
-        req.addOption("--cookies", jar.absolutePath)
-        req.addOption("--dump-single-json")
-        req.addOption("--no-warnings")
-        req.addOption("--flat-playlist")
-        req.addOption("--playlist-items", "1:300")
+        val jar = File(appContext.cacheDir, "cookies-${UUID.randomUUID()}.txt")
+        try {
+            jar.writeText("# Netscape HTTP Cookie File\n")
+            val req = YoutubeDLRequest(url)
+            req.addOption("--cookies", jar.absolutePath)
+            req.addOption("--dump-single-json")
+            req.addOption("--no-warnings")
+            req.addOption("--no-check-certificates")
+            req.addOption("--socket-timeout", "30")
+            req.addOption("--retries", "3")
+            req.addOption("--flat-playlist")
+            req.addOption("--playlist-items", "1:300")
 
-        val out = YoutubeDL.getInstance().execute(req).out
-        val combined = out + "\n\u0000GRAB-COOKIES\u0000\n" + if (jar.exists()) jar.readText() else ""
-        MediaHelpers.parseMediaInfoJson(combined, url)
+            val out = YoutubeDL.getInstance().execute(req).out
+            val cookiesText = if (jar.exists()) jar.readText() else ""
+            val combined = out + "\n\u0000GRAB-COOKIES\u0000\n" + cookiesText
+            MediaHelpers.parseMediaInfoJson(combined, url)
+        } catch (t: Throwable) {
+            throw IllegalStateException(cleanEngineError(t), t)
+        } finally {
+            runCatching { jar.delete() }
+        }
     }
 
     /** Downloads a lightweight cached MP4 preview when sites refuse direct stream playback (e.g. TikTok). */
     suspend fun previewFile(url: String): String? = withContext(Dispatchers.IO) {
         ensureReady()
-        val dir = File(context.cacheDir, "preview").apply {
+        val dir = File(appContext.cacheDir, "preview").apply {
             deleteRecursively()
             mkdirs()
         }
@@ -124,6 +309,8 @@ class GrabEngine(private val context: Context) {
         req.addOption("-o", File(dir, "preview.%(ext)s").absolutePath)
         req.addOption("--no-playlist")
         req.addOption("--no-part")
+        req.addOption("--no-check-certificates")
+        req.addOption("--socket-timeout", "25")
         req.addOption("--print", "after_move:filepath")
         req.addOption("--no-simulate")
         val out = YoutubeDL.getInstance().execute(req).out
@@ -140,6 +327,7 @@ class GrabEngine(private val context: Context) {
         title: String,
         template: String,
         outputDir: File,
+        useAria2c: Boolean = false,
         onEvent: (EngineEvent) -> Unit,
     ) = withContext(Dispatchers.IO) {
         onEvent(EngineEvent.Starting(jobId))
@@ -156,11 +344,30 @@ class GrabEngine(private val context: Context) {
             req.addOption("--no-playlist")
             req.addOption("--newline")
             req.addOption("--no-mtime")
+            req.addOption("--continue")
+            req.addOption("--no-check-certificates")
+            req.addOption("--socket-timeout", "30")
+            req.addOption("--retries", "5")
+            req.addOption("--fragment-retries", "5")
             req.addOption("--print", "after_move:filepath")
             req.addOption("--no-simulate")
             req.addOption("--concurrent-fragments", "4")
             req.addOption("--http-chunk-size", "10M")
-            args.forEach { req.addOption(it) }
+
+            // Point yt-dlp directly at the resolved bundled FFmpeg location when present
+            resolveFfmpegBinary()?.let { ffBin ->
+                req.addOption("--ffmpeg-location", ffBin.absolutePath)
+            }
+
+            // Enable Aria2c external multi-connection downloader when requested, initialized, and not trimming
+            val hasTrim = args.any { it == "--download-sections" }
+            if (useAria2c && _engineStatus.value.aria2cReady && !hasTrim) {
+                req.addOption("--downloader", "libaria2c.so")
+                req.addOption("--downloader-args", "aria2c:-x 8 -s 8 -k 1M")
+            }
+
+            // Properly pair flag + argument values for YoutubeDLRequest
+            applyArgsToRequest(req, args)
 
             val resp = YoutubeDL.getInstance().execute(req, jobId) { progress, eta, line ->
                 val clamped = progress.coerceIn(0f, 100f)
@@ -180,18 +387,19 @@ class GrabEngine(private val context: Context) {
 
             val paths = collectOutputs(outputDir, resp.out, matchId, startedAt)
             if (paths.isNotEmpty()) {
-                MediaScannerConnection.scanFile(context, paths.toTypedArray(), null, null)
+                MediaScannerConnection.scanFile(appContext, paths.toTypedArray(), null, null)
             }
             onEvent(EngineEvent.Done(jobId, paths))
-            DownloadService.notifyFinished(context, jobId, title, ok = true)
+            DownloadService.notifyFinished(appContext, jobId, title, ok = true)
         } catch (_: YoutubeDL.CanceledException) {
             onEvent(EngineEvent.Canceled(jobId))
         } catch (t: Throwable) {
-            val msg = t.message ?: t.toString()
-            val isNet = networkErrorRegex.containsMatchIn(msg)
-            onEvent(EngineEvent.Error(jobId, msg, isNet))
+            val rawMsg = t.message ?: t.toString()
+            val isNet = networkErrorRegex.containsMatchIn(rawMsg)
+            val cleanMsg = cleanEngineError(t)
+            onEvent(EngineEvent.Error(jobId, cleanMsg, isNet))
             if (!isNet) {
-                DownloadService.notifyFinished(context, jobId, title, ok = false)
+                DownloadService.notifyFinished(appContext, jobId, title, ok = false)
             }
         } finally {
             activeJobs.remove(jobId)
@@ -210,26 +418,22 @@ class GrabEngine(private val context: Context) {
         activeJobs[jobId] = title to 0f
         refreshForegroundService()
         try {
-            ensureReady()
+            val ffmpegBin = ensureFfmpegReady()
             if (!input.exists()) throw IllegalStateException("The file is no longer on the phone")
-            val output = uniqueFile(input.parentFile ?: context.filesDir, input.nameWithoutExtension, format)
-            val codec = when (format.lowercase()) {
+            val output = uniqueFile(input.parentFile ?: appContext.filesDir, input.nameWithoutExtension, format)
+            val codec = when (format.lowercase(Locale.US)) {
                 "m4a" -> listOf("-c:a", "aac", "-b:a", "192k")
                 "opus" -> listOf("-c:a", "libopus", "-b:a", "160k")
                 "flac" -> listOf("-c:a", "flac")
                 else -> listOf("-c:a", "libmp3lame", "-q:a", "0")
             }
             val cmd = listOf(
-                File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so").absolutePath,
+                ffmpegBin.absolutePath,
                 "-hide_banner", "-nostdin", "-y",
                 "-i", input.absolutePath, "-vn", "-map", "0:a:0",
             ) + codec + output.absolutePath
 
-            val packages = File(context.noBackupFilesDir, "youtubedl-android/packages")
-            val pb = ProcessBuilder(cmd).redirectErrorStream(true)
-            pb.environment()["LD_LIBRARY_PATH"] =
-                "${File(packages, "python/usr/lib").absolutePath}:${File(packages, "ffmpeg/usr/lib").absolutePath}"
-            val process = pb.start()
+            val process = buildFfmpegProcess(cmd).start()
             ffmpegProcesses[jobId] = process
 
             var totalSec = 0.0
@@ -269,9 +473,9 @@ class GrabEngine(private val context: Context) {
                     throw IllegalStateException(friendly)
                 }
                 else -> {
-                    MediaScannerConnection.scanFile(context, arrayOf(output.absolutePath), null, null)
+                    MediaScannerConnection.scanFile(appContext, arrayOf(output.absolutePath), null, null)
                     onEvent(EngineEvent.Done(jobId, listOf(output.absolutePath)))
-                    DownloadService.notifyFinished(context, jobId, title, ok = true)
+                    DownloadService.notifyFinished(appContext, jobId, title, ok = true)
                 }
             }
         } catch (t: Throwable) {
@@ -306,28 +510,24 @@ class GrabEngine(private val context: Context) {
         }.getOrNull()
     }
 
-    /** Cuts [startSec, endSec] to AAC with smooth fade-in/out and saves into Ringtones/Grab via MediaStore. */
+    /** Cuts [startSec, endSec] to AAC with smooth fade-in/out and saves into Ringtones/Getiy via MediaStore. */
     suspend fun makeRingtone(input: File, startSec: Double, endSec: Double, title: String): Uri =
         withContext(Dispatchers.IO) {
             if (!input.exists()) throw IllegalStateException("The file is no longer on the phone")
-            ensureReady()
+            val ffmpegBin = ensureFfmpegReady()
             val length = (endSec - startSec).coerceAtLeast(1.0)
-            val tmp = File(context.cacheDir, "ringtone-${System.currentTimeMillis()}.m4a")
+            val tmp = File(appContext.cacheDir, "ringtone-${System.currentTimeMillis()}.m4a")
             val fadeOut = (length - 1.0).coerceAtLeast(0.0)
             val cmd = listOf(
-                File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so").absolutePath,
+                ffmpegBin.absolutePath,
                 "-hide_banner", "-nostdin", "-y",
-                "-ss", String.format("%.2f", startSec),
-                "-t", String.format("%.2f", length),
+                "-ss", String.format(Locale.US, "%.2f", startSec),
+                "-t", String.format(Locale.US, "%.2f", length),
                 "-i", input.absolutePath, "-vn", "-map", "0:a:0",
-                "-af", String.format("afade=t=in:st=0:d=0.3,afade=t=out:st=%.2f:d=1", fadeOut),
+                "-af", String.format(Locale.US, "afade=t=in:st=0:d=0.3,afade=t=out:st=%.2f:d=1", fadeOut),
                 "-c:a", "aac", "-b:a", "192k", tmp.absolutePath,
             )
-            val packages = File(context.noBackupFilesDir, "youtubedl-android/packages")
-            val pb = ProcessBuilder(cmd).redirectErrorStream(true)
-            pb.environment()["LD_LIBRARY_PATH"] =
-                "${File(packages, "python/usr/lib").absolutePath}:${File(packages, "ffmpeg/usr/lib").absolutePath}"
-            val process = pb.start()
+            val process = buildFfmpegProcess(cmd).start()
             val log = process.inputStream.bufferedReader().readText()
             if (process.waitFor() != 0 || !tmp.exists() || tmp.length() == 0L) {
                 tmp.delete()
@@ -339,7 +539,7 @@ class GrabEngine(private val context: Context) {
                 throw IllegalStateException(msg)
             }
             val cleanName = title.replace(Regex("""[\\/:*?"<>|]"""), " ")
-                .take(60).trim().ifEmpty { "Grab ringtone" }
+                .take(60).trim().ifEmpty { "Getiy ringtone" }
             try {
                 saveRingtoneToMediaStore(tmp, cleanName)
             } finally {
@@ -348,19 +548,19 @@ class GrabEngine(private val context: Context) {
         }
 
     fun setDefaultRingtone(uri: Uri): Boolean {
-        if (Settings.System.canWrite(context)) {
-            RingtoneManager.setActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE, uri)
+        if (Settings.System.canWrite(appContext)) {
+            RingtoneManager.setActualDefaultRingtoneUri(appContext, RingtoneManager.TYPE_RINGTONE, uri)
             return true
         }
         val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS)
-            .setData(Uri.parse("package:${context.packageName}"))
+            .setData(Uri.parse("package:${appContext.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }
+        runCatching { appContext.startActivity(intent) }
         return false
     }
 
     private fun saveRingtoneToMediaStore(file: File, name: String): Uri {
-        val resolver = context.contentResolver
+        val resolver = appContext.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, "$name.m4a")
             put(MediaStore.Audio.Media.TITLE, name)
@@ -369,7 +569,7 @@ class GrabEngine(private val context: Context) {
             put(MediaStore.Audio.Media.IS_MUSIC, false)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            values.put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_RINGTONES}/Grab")
+            values.put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_RINGTONES}/Getiy")
             values.put(MediaStore.Audio.Media.IS_PENDING, 1)
             val uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
                 ?: throw IllegalStateException("Couldn't save the ringtone")
@@ -382,7 +582,7 @@ class GrabEngine(private val context: Context) {
             return uri
         }
         @Suppress("DEPRECATION")
-        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_RINGTONES), "Grab")
+        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_RINGTONES), "Getiy")
         dir.mkdirs()
         val target = File(dir, "$name.m4a")
         file.copyTo(target, overwrite = true)
@@ -400,7 +600,7 @@ class GrabEngine(private val context: Context) {
             .filter { it.isFile && it.lastModified() >= since && !it.name.endsWith(".part") }
         var extra = fresh.filter { f -> keys.any { f.name.contains(it) } }.map { it.absolutePath }
         if (printed.isEmpty() && extra.isEmpty()) {
-            extra = fresh.filter { it.extension.lowercase() in setOf("srt", "vtt", "ass") }
+            extra = fresh.filter { it.extension.lowercase(Locale.US) in setOf("srt", "vtt", "ass") }
                 .map { it.absolutePath }
         }
         return (printed + extra).distinct()
@@ -422,6 +622,78 @@ class GrabEngine(private val context: Context) {
     }
 
     private fun refreshForegroundService() {
-        DownloadService.update(context, activeJobs.values.toList())
+        DownloadService.update(appContext, activeJobs.values.toList())
+    }
+
+    companion object {
+        const val YOUTUBEDL_ANDROID_VERSION = "0.18.1"
+
+        private val valueTakingFlags = setOf(
+            "-f", "--format",
+            "-S", "--format-sort",
+            "-o", "--output",
+            "--merge-output-format",
+            "--audio-format",
+            "--audio-quality",
+            "--sub-langs",
+            "--convert-subs",
+            "--download-sections",
+            "--downloader",
+            "--downloader-args",
+            "--cookies",
+            "--print",
+            "--playlist-items",
+            "--concurrent-fragments",
+            "--http-chunk-size",
+            "--retries",
+            "--fragment-retries",
+            "--socket-timeout",
+            "--ffmpeg-location",
+            "--user-agent",
+            "--referer",
+        )
+
+        /**
+         * Pairs flag + argument tokens cleanly onto [YoutubeDLRequest] via addOption(flag, value)
+         * instead of passing bare values as standalone option keys.
+         */
+        internal fun applyArgsToRequest(req: YoutubeDLRequest, args: List<String>) {
+            var i = 0
+            while (i < args.size) {
+                val token = args[i]
+                val next = args.getOrNull(i + 1)
+                if (token in valueTakingFlags && next != null) {
+                    req.addOption(token, next)
+                    i += 2
+                } else if (token.startsWith("-") && next != null && !next.startsWith("-")) {
+                    req.addOption(token, next)
+                    i += 2
+                } else {
+                    req.addOption(token)
+                    i += 1
+                }
+            }
+        }
+
+        internal fun parseFfmpegVersionLine(line: String?): String? {
+            if (line.isNullOrBlank()) return null
+            val match = Regex("""ffmpeg version\s+([^\s]+)""", RegexOption.IGNORE_CASE).find(line)
+            return match?.groupValues?.getOrNull(1)?.take(24)
+        }
+
+        internal fun cleanEngineError(t: Throwable): String {
+            val raw = t.message?.trim().orEmpty()
+            if (raw.isEmpty()) return t.javaClass.simpleName
+            val errorLine = raw.lines()
+                .map { it.trim() }
+                .lastOrNull { it.startsWith("ERROR:", ignoreCase = true) }
+            if (errorLine != null) {
+                return errorLine.removePrefix("ERROR:").removePrefix("error:").trim()
+            }
+            return raw.lines()
+                .map { it.trim() }
+                .lastOrNull { it.isNotEmpty() }
+                ?: raw
+        }
     }
 }

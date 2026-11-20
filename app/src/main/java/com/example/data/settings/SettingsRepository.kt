@@ -29,11 +29,12 @@ class SettingsRepository(private val context: Context) {
         val SAVE_BASE = stringPreferencesKey("save_base")
         val SAVE_FOLDER = stringPreferencesKey("save_folder")
         val FILE_TEMPLATE = stringPreferencesKey("file_template")
-        val THEME_MODE = stringPreferencesKey("theme_mode")
+        val THEME_MODE = stringPreferencesKey("getiy_theme_mode")
         val HAPTICS = booleanPreferencesKey("haptics_enabled")
         val SEEN_WELCOME = booleanPreferencesKey("seen_welcome")
         val LIBRARY_SORT = stringPreferencesKey("library_sort")
         val LIBRARY_GROUP = booleanPreferencesKey("library_group")
+        val USE_ARIA2C = booleanPreferencesKey("use_aria2c")
     }
 
     val settingsFlow: Flow<AppSettings> = context.grabDataStore.data.map { p ->
@@ -47,13 +48,14 @@ class SettingsRepository(private val context: Context) {
             audioFormat = p[Keys.AUDIO_FORMAT] ?: "mp3",
             concurrency = (p[Keys.CONCURRENCY] ?: 2).coerceIn(1, 3),
             saveBase = p[Keys.SAVE_BASE] ?: "download",
-            saveFolder = p[Keys.SAVE_FOLDER] ?: "Grab",
+            saveFolder = p[Keys.SAVE_FOLDER] ?: "Getiy",
             fileTemplate = p[Keys.FILE_TEMPLATE] ?: MediaHelpers.DEFAULT_FILE_TEMPLATE,
             themeMode = AppThemeMode.fromName(p[Keys.THEME_MODE]),
             hapticsEnabled = haptics,
             seenWelcome = p[Keys.SEEN_WELCOME] ?: false,
             librarySort = LibrarySort.fromName(p[Keys.LIBRARY_SORT]),
             libraryGroupBySite = p[Keys.LIBRARY_GROUP] ?: false,
+            useAria2c = p[Keys.USE_ARIA2C] ?: false,
         )
     }
 
@@ -67,13 +69,14 @@ class SettingsRepository(private val context: Context) {
                 audioFormat = p[Keys.AUDIO_FORMAT] ?: "mp3",
                 concurrency = (p[Keys.CONCURRENCY] ?: 2).coerceIn(1, 3),
                 saveBase = p[Keys.SAVE_BASE] ?: "download",
-                saveFolder = p[Keys.SAVE_FOLDER] ?: "Grab",
+                saveFolder = p[Keys.SAVE_FOLDER] ?: "Getiy",
                 fileTemplate = p[Keys.FILE_TEMPLATE] ?: MediaHelpers.DEFAULT_FILE_TEMPLATE,
                 themeMode = AppThemeMode.fromName(p[Keys.THEME_MODE]),
                 hapticsEnabled = p[Keys.HAPTICS] ?: true,
                 seenWelcome = p[Keys.SEEN_WELCOME] ?: false,
                 librarySort = LibrarySort.fromName(p[Keys.LIBRARY_SORT]),
                 libraryGroupBySite = p[Keys.LIBRARY_GROUP] ?: false,
+                useAria2c = p[Keys.USE_ARIA2C] ?: false,
             )
             val next = transform(current)
             GrabHaptics.enabled = next.hapticsEnabled
@@ -84,13 +87,14 @@ class SettingsRepository(private val context: Context) {
             p[Keys.CONCURRENCY] = next.concurrency.coerceIn(1, 3)
             p[Keys.SAVE_BASE] = next.saveBase
             p[Keys.SAVE_FOLDER] = next.saveFolder.replace(Regex("""[\\/:*?"<>|]"""), " ")
-                .trim().take(40).ifEmpty { "Grab" }
+                .trim().take(40).ifEmpty { "Getiy" }
             p[Keys.FILE_TEMPLATE] = MediaHelpers.cleanTemplate(next.fileTemplate)
             p[Keys.THEME_MODE] = next.themeMode.name
             p[Keys.HAPTICS] = next.hapticsEnabled
             p[Keys.SEEN_WELCOME] = next.seenWelcome
             p[Keys.LIBRARY_SORT] = next.librarySort.name
             p[Keys.LIBRARY_GROUP] = next.libraryGroupBySite
+            p[Keys.USE_ARIA2C] = next.useAria2c
         }
     }
 }

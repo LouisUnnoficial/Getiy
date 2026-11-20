@@ -15,9 +15,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -48,8 +51,9 @@ import com.example.data.model.JobStatus
 import com.example.data.model.LibraryItem
 import com.example.service.GrabTileService
 import com.example.ui.components.ClipboardOfferCard
+import com.example.ui.components.GetiySideRail
+import com.example.ui.components.GetiyTopNavBar
 import com.example.ui.components.PopConfettiOverlay
-import com.example.ui.components.PopTabBar
 import com.example.ui.components.PopTabItem
 import com.example.ui.components.PopToastHost
 import com.example.ui.screens.AboutScreen
@@ -66,6 +70,7 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.VideoPlayerScreen
 import com.example.ui.screens.WelcomeScreen
 import com.example.ui.theme.GrabTheme
+import com.example.ui.theme.GrabThemeTokens
 import com.example.ui.viewmodel.GrabViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -95,24 +100,30 @@ class MainActivity : ComponentActivity() {
             var showAbout by remember { mutableStateOf(false) }
             var ringtoneItem by remember { mutableStateOf<LibraryItem?>(null) }
 
-            val yellowTopBar = !settings.seenWelcome || showAbout
-            LaunchedEffect(darkTheme, yellowTopBar, videoPlayerItem) {
-                val useDarkIcons = when {
+            val navyTopBar = !settings.seenWelcome || showAbout || detailJobId != null
+            val navyBottomBar = !settings.seenWelcome
+            LaunchedEffect(darkTheme, navyTopBar, navyBottomBar, videoPlayerItem) {
+                val useDarkStatusIcons = when {
                     videoPlayerItem != null -> false
-                    yellowTopBar -> true
+                    navyTopBar -> false
+                    else -> !darkTheme
+                }
+                val useDarkNavIcons = when {
+                    videoPlayerItem != null -> false
+                    navyBottomBar -> false
                     else -> !darkTheme
                 }
                 val transparent = Color.Transparent.toArgb()
                 enableEdgeToEdge(
-                    statusBarStyle = if (useDarkIcons) {
+                    statusBarStyle = if (useDarkStatusIcons) {
                         SystemBarStyle.light(transparent, transparent)
                     } else {
                         SystemBarStyle.dark(transparent)
                     },
-                    navigationBarStyle = if (darkTheme) {
-                        SystemBarStyle.dark(transparent)
-                    } else {
+                    navigationBarStyle = if (useDarkNavIcons) {
                         SystemBarStyle.light(transparent, transparent)
+                    } else {
+                        SystemBarStyle.dark(transparent)
                     },
                 )
             }
@@ -200,6 +211,7 @@ private fun GrabAppRoot(
     onOpenRingtone: (LibraryItem) -> Unit,
     onCloseRingtone: () -> Unit,
 ) {
+    val pop = GrabThemeTokens.pop
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val jobs by viewModel.jobs.collectAsStateWithLifecycle()
     val speeds by viewModel.speeds.collectAsStateWithLifecycle()
@@ -207,6 +219,7 @@ private fun GrabAppRoot(
     val libraryItems by viewModel.libraryItems.collectAsStateWithLifecycle()
     val activeCount by viewModel.activeDownloadCount.collectAsStateWithLifecycle()
     val engineVersion by viewModel.engineVersion.collectAsStateWithLifecycle()
+    val engineStatus by viewModel.engineStatus.collectAsStateWithLifecycle()
     val fetchState by viewModel.fetchState.collectAsStateWithLifecycle()
     val clipboardOffer by viewModel.clipboardOffer.collectAsStateWithLifecycle()
     val toast by viewModel.toast.collectAsStateWithLifecycle()
@@ -216,123 +229,154 @@ private fun GrabAppRoot(
     val releaseCheck by viewModel.releaseCheck.collectAsStateWithLifecycle()
 
     val hasMiniPlayer = audioState.current != null
-    val extraBottom = if (hasMiniPlayer) 72 else 0
+    val hasOverlayAboveBottom = hasMiniPlayer || clipboardOffer != null
+    val extraBottom = when {
+        hasMiniPlayer && clipboardOffer != null -> 140
+        hasOverlayAboveBottom -> 74
+        else -> 0
+    }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    val navTabs = listOf(
+        PopTabItem(Icons.Rounded.Home, "Home", testTag = "tab_home"),
+        PopTabItem(Icons.Rounded.Download, "Queue", badge = activeCount, testTag = "tab_downloads"),
+        PopTabItem(Icons.Rounded.VideoLibrary, "Vault", testTag = "tab_library"),
+        PopTabItem(Icons.Rounded.Tune, "Settings", testTag = "tab_settings"),
+    )
+
+    Box(modifier = Modifier.fillMaxSize().background(pop.bg)) {
         if (!settings.seenWelcome) {
             WelcomeScreen(onDone = { viewModel.completeWelcome() })
         } else {
-            // Main 4-tab shell
-            Box(modifier = Modifier.fillMaxSize()) {
-                AnimatedContent(
-                    targetState = selectedTab,
-                    transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(160)) },
-                    label = "tabContent",
-                ) { tab ->
-                    when (tab) {
-                        0 -> HomeScreen(
-                            fetchState = fetchState,
-                            recentJobs = jobs,
-                            engineVersion = engineVersion,
-                            extraBottomPadding = extraBottom,
-                            onUrlChange = viewModel::updateUrlText,
-                            onPasteAndFetch = viewModel::pasteAndFetch,
-                            onFetch = { viewModel.fetchLink() },
-                            onReopenReady = viewModel::reopenFetchedSheet,
-                            onOpenJobDetail = onOpenDetail,
-                            onCopyError = { viewModel.showToast("Error copied") },
-                        )
-                        1 -> DownloadsScreen(
-                            jobs = jobs,
-                            speeds = speeds,
-                            extraBottomPadding = extraBottom,
-                            onPause = viewModel::pauseJob,
-                            onResume = viewModel::resumeJob,
-                            onCancel = viewModel::cancelJob,
-                            onRetry = viewModel::retryJob,
-                            onRemove = viewModel::removeJob,
-                            onClearFinished = viewModel::clearFinishedJobs,
-                            onOpenDetail = onOpenDetail,
-                        )
-                        2 -> LibraryScreen(
-                            items = libraryItems,
-                            sort = settings.librarySort,
-                            groupBySite = settings.libraryGroupBySite,
-                            extraBottomPadding = extraBottom,
-                            onSortChange = { s -> viewModel.updateSettings { it.copy(librarySort = s) } },
-                            onGroupChange = { g -> viewModel.updateSettings { it.copy(libraryGroupBySite = g) } },
-                            onPlayVideo = onOpenVideo,
-                            onPlayAudio = { item ->
-                                viewModel.playAudio(item)
-                                onOpenAudio()
-                            },
-                            onOpenDetail = onOpenDetail,
-                            onDeleteSelected = viewModel::deleteFiles,
-                        )
-                        else -> SettingsScreen(
-                            settings = settings,
-                            engineVersion = engineVersion,
-                            storageBytes = libraryItems.sumOf { it.sizeBytes },
-                            failedCount = jobs.count {
-                                it.jobStatus == JobStatus.FAILED || it.jobStatus == JobStatus.CANCELED
-                            },
-                            extraBottomPadding = extraBottom,
-                            onUpdateSettings = viewModel::updateSettings,
-                            onClearFailed = viewModel::clearFailedJobs,
-                            onOpenAbout = onOpenAbout,
-                        )
-                    }
-                }
+            // Adaptive Shell: Top Navigation Bar on compact phones, Left Side Rail on wide screens
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val useSideRail = maxWidth >= 700.dp
 
-                // Floating Clipboard Offer + Mini Audio Player above the dock
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(start = 16.dp, end = 16.dp, bottom = 92.dp),
-                ) {
-                    AnimatedVisibility(
-                        visible = clipboardOffer != null,
-                        enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 2 },
-                        exit = fadeOut(tween(180)) + slideOutVertically(tween(200)) { it / 2 },
-                    ) {
-                        clipboardOffer?.let { offer ->
-                            ClipboardOfferCard(
-                                offer = offer,
-                                onGrab = viewModel::grabClipboardOffer,
-                                onDismiss = viewModel::dismissClipboardOffer,
-                            )
+                val mainContent: @Composable (Modifier) -> Unit = { contentModifier ->
+                    Box(modifier = contentModifier) {
+                        AnimatedContent(
+                            targetState = selectedTab,
+                            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(150)) },
+                            label = "tabContent",
+                        ) { tab ->
+                            when (tab) {
+                                0 -> HomeScreen(
+                                    fetchState = fetchState,
+                                    recentJobs = jobs,
+                                    activeCount = activeCount,
+                                    savedCount = libraryItems.size,
+                                    engineVersion = engineVersion,
+                                    extraBottomPadding = extraBottom,
+                                    onUrlChange = viewModel::updateUrlText,
+                                    onPasteAndFetch = viewModel::pasteAndFetch,
+                                    onFetch = { viewModel.fetchLink() },
+                                    onReopenReady = viewModel::reopenFetchedSheet,
+                                    onOpenJobDetail = onOpenDetail,
+                                    onJumpToDownloads = { viewModel.selectTab(1) },
+                                    onJumpToLibrary = { viewModel.selectTab(2) },
+                                    onCopyError = { viewModel.showToast("Error copied") },
+                                )
+                                1 -> DownloadsScreen(
+                                    jobs = jobs,
+                                    speeds = speeds,
+                                    extraBottomPadding = extraBottom,
+                                    onPause = viewModel::pauseJob,
+                                    onResume = viewModel::resumeJob,
+                                    onCancel = viewModel::cancelJob,
+                                    onRetry = viewModel::retryJob,
+                                    onRemove = viewModel::removeJob,
+                                    onClearFinished = viewModel::clearFinishedJobs,
+                                    onOpenDetail = onOpenDetail,
+                                )
+                                2 -> LibraryScreen(
+                                    items = libraryItems,
+                                    sort = settings.librarySort,
+                                    groupBySite = settings.libraryGroupBySite,
+                                    extraBottomPadding = extraBottom,
+                                    onSortChange = { s -> viewModel.updateSettings { it.copy(librarySort = s) } },
+                                    onGroupChange = { g -> viewModel.updateSettings { it.copy(libraryGroupBySite = g) } },
+                                    onPlayVideo = onOpenVideo,
+                                    onPlayAudio = { item ->
+                                        viewModel.playAudio(item)
+                                        onOpenAudio()
+                                    },
+                                    onOpenDetail = onOpenDetail,
+                                    onDeleteSelected = viewModel::deleteFiles,
+                                )
+                                else -> SettingsScreen(
+                                    settings = settings,
+                                    engineStatus = engineStatus,
+                                    storageBytes = libraryItems.sumOf { it.sizeBytes },
+                                    failedCount = jobs.count {
+                                        it.jobStatus == JobStatus.FAILED || it.jobStatus == JobStatus.CANCELED
+                                    },
+                                    extraBottomPadding = extraBottom,
+                                    onUpdateSettings = viewModel::updateSettings,
+                                    onReinitEngines = viewModel::reinitializeEngines,
+                                    onClearFailed = viewModel::clearFailedJobs,
+                                    onOpenAbout = onOpenAbout,
+                                )
+                            }
+                        }
+
+                        // Floating Clipboard Offer + Mini Audio Player positioned smartly above Home's Fetch Dock or bottom safe area
+                        val overlayBottom = if (selectedTab == 0) 152.dp else 14.dp
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
+                                .padding(start = 16.dp, end = 16.dp, bottom = overlayBottom),
+                        ) {
+                            AnimatedVisibility(
+                                visible = clipboardOffer != null,
+                                enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 2 },
+                                exit = fadeOut(tween(180)) + slideOutVertically(tween(200)) { it / 2 },
+                            ) {
+                                clipboardOffer?.let { offer ->
+                                    ClipboardOfferCard(
+                                        offer = offer,
+                                        onGrab = viewModel::grabClipboardOffer,
+                                        onDismiss = viewModel::dismissClipboardOffer,
+                                    )
+                                }
+                            }
+                            if (clipboardOffer != null && hasMiniPlayer) {
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            AnimatedVisibility(
+                                visible = hasMiniPlayer,
+                                enter = fadeIn(tween(200)) + slideInVertically(tween(240)) { it / 2 },
+                                exit = fadeOut(tween(160)) + slideOutVertically(tween(180)) { it / 2 },
+                            ) {
+                                MiniPlayerBar(
+                                    audioState = audioState,
+                                    onOpenFullPlayer = onOpenAudio,
+                                    onTogglePlayPause = viewModel::toggleAudioPlayPause,
+                                    onClose = viewModel::stopAudio,
+                                )
+                            }
                         }
                     }
-                    if (clipboardOffer != null && hasMiniPlayer) {
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    AnimatedVisibility(
-                        visible = hasMiniPlayer,
-                        enter = fadeIn(tween(200)) + slideInVertically(tween(240)) { it / 2 },
-                        exit = fadeOut(tween(160)) + slideOutVertically(tween(180)) { it / 2 },
-                    ) {
-                        MiniPlayerBar(
-                            audioState = audioState,
-                            onOpenFullPlayer = onOpenAudio,
-                            onTogglePlayPause = viewModel::toggleAudioPlayPause,
-                            onClose = viewModel::stopAudio,
-                        )
-                    }
                 }
 
-                // Floating frosted-glass gooey dock
-                PopTabBar(
-                    tabs = listOf(
-                        PopTabItem(Icons.Rounded.Home, "Home", testTag = "tab_home"),
-                        PopTabItem(Icons.Rounded.Download, "Downloads", badge = activeCount, testTag = "tab_downloads"),
-                        PopTabItem(Icons.Rounded.VideoLibrary, "Library", testTag = "tab_library"),
-                        PopTabItem(Icons.Rounded.Tune, "Settings", testTag = "tab_settings"),
-                    ),
-                    selectedIndex = selectedTab,
-                    onSelect = viewModel::selectTab,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
+                if (useSideRail) {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        GetiySideRail(
+                            tabs = navTabs,
+                            selectedIndex = selectedTab,
+                            onSelect = viewModel::selectTab,
+                        )
+                        mainContent(Modifier.weight(1f).fillMaxSize().statusBarsPadding())
+                    }
+                } else {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        GetiyTopNavBar(
+                            tabs = navTabs,
+                            selectedIndex = selectedTab,
+                            onSelect = viewModel::selectTab,
+                        )
+                        mainContent(Modifier.weight(1f).fillMaxSize())
+                    }
+                }
             }
 
             // Secondary full-screen views (all equipped with BackHandler)
@@ -379,6 +423,7 @@ private fun GrabAppRoot(
             ) {
                 AboutScreen(
                     releaseState = releaseCheck,
+                    engineStatus = engineStatus,
                     onCheckUpdates = { viewModel.checkForGithubUpdates(BuildConfig.VERSION_NAME) },
                     onBack = onCloseAbout,
                 )

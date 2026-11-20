@@ -2,21 +2,35 @@ package com.example.ui.theme
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import kotlin.math.abs
 
-// Brand tokens matching Grab's Pop design system
-val PopYellow = Color(0xFFFFD84D)
-val PopInk = Color(0xFF141414)
-val PopNavIdle = Color(0xFFBDBDBD)
-val PopError = Color(0xFFB3261E)
-val PopSkyBlue = Color(0xFF9FD8FF)
-val PopRosePink = Color(0xFFFFB2C8)
+// Getiy refined matte brand tokens — anchored to #0E1935 Midnight Navy & calm silver-slate tones (no neon)
+val GetiyNavy = Color(0xFF0E1935)
+val GetiyNavyDeep = Color(0xFF091124)
+val GetiyMint = Color(0xFFDCE6F7)        // Matte cool silver-ice primary surface
+val GetiyCyan = Color(0xFFCDDCEF)        // Soft mist-slate
+val GetiyAzure = Color(0xFF7B9CD0)       // Calm matte steel-blue accent
+val GetiyPeriwinkle = Color(0xFF93A8D1)  // Muted dusty slate-indigo
+val GetiyIce = Color(0xFFF0F4FC)         // Crisp off-white text
+
+val GetiyAccentBrush: Brush = Brush.horizontalGradient(
+    colors = listOf(Color(0xFFE5EDF9), Color(0xFFD2DFF4)),
+)
+
+// Semantic aliases aligned with Getiy's calm matte palette
+val PopYellow = GetiyMint
+val PopInk = GetiyNavy
+val PopNavIdle = Color(0xFF8C9EC2)
+val PopError = Color(0xFFD65A68)
+val PopSkyBlue = GetiyAzure
+val PopRosePink = GetiyPeriwinkle
 
 val PopThumbPalette = listOf(
-    PopYellow,
-    PopSkyBlue,
-    PopRosePink,
+    Color(0xFFC8D7EE),
+    Color(0xFFB5C7E4),
+    Color(0xFFD5DFF0),
 )
 
 fun popTintFor(seed: String): Color =
@@ -41,39 +55,39 @@ data class PopColors(
 ) {
     companion object {
         val Light = PopColors(
-            bg = Color(0xFFFFFFFF),
-            text = PopInk,
-            muted = Color(0xFF555555),
-            card = Color(0xFFF7F7F7),
-            field = Color(0xFFF4F4F4),
-            track = Color(0xFFEFEFEF),
-            soft = Color(0xFFFFF1B8),
+            bg = Color(0xFFF4F7FC),
+            text = GetiyNavy,
+            muted = Color(0xFF56688A),
+            card = Color(0xFFFFFFFF),
+            field = Color(0xFFE7EEF8),
+            track = Color(0xFFD2DDF0),
+            soft = Color(0xFFE2EAF7),
             trackOnSoft = Color(0xFFFFFFFF),
-            strong = PopInk,
-            onStrong = PopYellow,
-            bar = PopInk,
-            disabled = Color(0xFF3A3A3A),
-            errorSoft = Color(0xFFFFE1E1),
+            strong = GetiyNavy,
+            onStrong = Color(0xFFF4F7FC),
+            bar = GetiyNavy,
+            disabled = Color(0xFF8E9FBE),
+            errorSoft = Color(0xFFFCE6E9),
             isDark = false,
         )
 
         val Dark = PopColors(
-            bg = Color(0xFF121212),
-            text = Color(0xFFF4F4F4),
-            muted = Color(0xFFA8A8A8),
-            card = Color(0xFF1E1E1E),
-            field = Color(0xFF262626),
-            track = Color(0xFF333333),
-            soft = Color(0xFF3A3215),
-            trackOnSoft = Color(0xFF1E1A0B),
-            strong = PopYellow,
-            onStrong = PopInk,
-            bar = Color(0xFF242424),
-            disabled = Color(0xFF3A3A3A),
-            errorSoft = Color(0xFF4A2020),
+            bg = GetiyNavy,
+            text = GetiyIce,
+            muted = Color(0xFF8F9FC0),
+            card = Color(0xFF152345),
+            field = Color(0xFF1B2C54),
+            track = Color(0xFF263A6A),
+            soft = Color(0xFF1D305B),
+            trackOnSoft = Color(0xFF121F3D),
+            strong = GetiyMint,
+            onStrong = GetiyNavyDeep,
+            bar = Color(0xFF132142),
+            disabled = Color(0xFF2B3C64),
+            errorSoft = Color(0xFF3A1F2D),
             isDark = true,
         )
     }
 }
 
-val LocalPopColors = staticCompositionLocalOf { PopColors.Light }
+val LocalPopColors = staticCompositionLocalOf { PopColors.Dark }

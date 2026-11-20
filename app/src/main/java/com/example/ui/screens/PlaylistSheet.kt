@@ -216,6 +216,7 @@ fun PlaylistBottomSheet(
             PopButton(
                 label = if (selected.size == 1) "Download 1 item" else "Download ${selected.size} items",
                 icon = Icons.Rounded.Download,
+                useGradient = true,
                 enabled = selected.isNotEmpty(),
                 onClick = { onDownloadSelected(selected, mode, maxHeight) },
                 modifier = Modifier.padding(bottom = 24.dp),

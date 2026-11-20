@@ -1,8 +1,12 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
@@ -26,7 +29,6 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.MovieFilter
 import androidx.compose.material.icons.rounded.OpenInNew
@@ -43,27 +45,39 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
+import com.example.R
 import com.example.core.FileShareHelper
 import com.example.core.GrabHaptics
+import com.example.data.engine.EngineStatus
 import com.example.ui.components.PopButton
 import com.example.ui.components.PopCardShape
 import com.example.ui.components.PopIconButton
+import com.example.ui.components.PopPillShape
 import com.example.ui.components.PopSection
+import com.example.ui.theme.GetiyAccentBrush
+import com.example.ui.theme.GetiyAzure
+import com.example.ui.theme.GetiyIce
+import com.example.ui.theme.GetiyMint
+import com.example.ui.theme.GetiyNavy
 import com.example.ui.theme.GrabThemeTokens
-import com.example.ui.theme.PopInk
-import com.example.ui.theme.PopYellow
 import com.example.ui.viewmodel.ReleaseCheckState
 
 @Composable
 fun AboutScreen(
     releaseState: ReleaseCheckState,
+    engineStatus: EngineStatus,
     onCheckUpdates: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -77,135 +91,183 @@ fun AboutScreen(
             .background(pop.bg)
             .navigationBarsPadding(),
         contentPadding = PaddingValues(bottom = 48.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
+        // Centered Studio Identity Hero
         item(key = "about_hero") {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))
-                    .background(PopYellow)
+                    .background(GetiyNavy)
                     .statusBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
             ) {
                 PopIconButton(
                     icon = Icons.Rounded.ArrowBack,
                     contentDescription = "Back",
-                    background = PopInk.copy(alpha = 0.12f),
-                    foreground = PopInk,
+                    background = Color.White.copy(alpha = 0.10f),
+                    foreground = GetiyIce,
                     onClick = onBack,
                     tag = "about_back_button",
+                    modifier = Modifier.align(Alignment.TopStart),
                 )
-                Spacer(Modifier.height(18.dp))
-                Box(
+
+                Column(
                     modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(PopInk),
-                    contentAlignment = Alignment.Center,
+                        .fillMaxWidth()
+                        .padding(top = 42.dp, bottom = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Download,
-                        contentDescription = "Grab emblem",
-                        tint = PopYellow,
-                        modifier = Modifier.size(38.dp),
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_getiy_logo),
+                        contentDescription = "Getiy logo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(84.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .border(1.dp, Color(0xFF2B4173), RoundedCornerShape(24.dp)),
                     )
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = "Getiy",
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            color = GetiyIce,
+                            fontWeight = FontWeight.ExtraBold,
+                        ),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(PopPillShape)
+                            .background(Color(0xFF1D305B))
+                            .border(1.dp, Color(0xFF2E457B), PopPillShape)
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = "v${BuildConfig.VERSION_NAME} · Media Capture Studio",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                color = GetiyMint,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                    }
                 }
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = "Grab",
-                    style = MaterialTheme.typography.displayMedium.copy(
-                        color = PopInk,
-                        fontWeight = FontWeight.ExtraBold,
-                    ),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Version ${BuildConfig.VERSION_NAME} · Paste a link. Get the file.",
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        color = PopInk.copy(alpha = 0.8f),
-                        fontWeight = FontWeight.SemiBold,
-                    ),
-                )
-                Spacer(Modifier.height(12.dp))
             }
-            Spacer(Modifier.height(22.dp))
         }
 
+        // Release Check Card
         item(key = "about_updates") {
-            Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                 UpdateCheckCard(
                     state = releaseState,
                     onCheck = onCheckUpdates,
                     onOpenRelease = { url -> FileShareHelper.openExternalUrl(context, url) },
                 )
-                Spacer(Modifier.height(24.dp))
             }
         }
 
+        // 2-Column Project Bento Links
         item(key = "about_project_links") {
-            Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                 PopSection("Project")
-                LinkCard(
-                    items = listOf(
-                        Triple(Icons.Rounded.Code, "GitHub repository", "Source code & releases") to "https://github.com/Asta39/grab",
-                        Triple(Icons.Rounded.BugReport, "Report an issue", "Found a broken site or bug?") to "https://github.com/Asta39/grab/issues",
-                    ),
-                    onOpen = { FileShareHelper.openExternalUrl(context, it) },
-                )
-                Spacer(Modifier.height(22.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    AboutBentoLinkTile(
+                        icon = Icons.Rounded.Code,
+                        title = "GitHub Repo",
+                        subtitle = "Source & releases",
+                        accent = GetiyMint,
+                        onClick = { FileShareHelper.openExternalUrl(context, "https://github.com/tpxlegend/Getiy") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    AboutBentoLinkTile(
+                        icon = Icons.Rounded.BugReport,
+                        title = "Report Issue",
+                        subtitle = "Broken site or bug",
+                        accent = GetiyAzure,
+                        onClick = { FileShareHelper.openExternalUrl(context, "https://github.com/tpxlegend/Getiy/issues") },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
 
+        // Engine Credits & License
         item(key = "about_credits") {
-            Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-                PopSection("Built with")
+            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                PopSection("Powered By")
+                val ytSub = engineStatus.ytDlpVersion?.let { "v$it · 1,800+ supported sites" } ?: "1,800+ supported sites"
+                val ffSub = engineStatus.ffmpegVersion?.let { "v$it · Merging, audio & ringtones" } ?: "Merging, audio & ringtones"
+                val ydlSub = "v${engineStatus.youtubedlAndroidVersion} · Native Android runtime + Aria2c"
                 LinkCard(
                     items = listOf(
-                        Triple(Icons.Rounded.Terminal, "yt-dlp", "1,800+ supported sites") to "https://github.com/yt-dlp/yt-dlp",
-                        Triple(Icons.Rounded.MovieFilter, "FFmpeg", "Merging, audio & clips") to "https://ffmpeg.org",
-                        Triple(Icons.Rounded.Android, "youtubedl-android", "Runs both natively on Android") to "https://github.com/yausername/youtubedl-android",
+                        Triple(Icons.Rounded.Terminal, "yt-dlp", ytSub) to "https://github.com/yt-dlp/yt-dlp",
+                        Triple(Icons.Rounded.MovieFilter, "FFmpeg", ffSub) to "https://github.com/FFmpeg/FFmpeg",
+                        Triple(Icons.Rounded.Android, "youtubedl-android", ydlSub) to "https://github.com/yausername/youtubedl-android",
+                        Triple(Icons.Rounded.Gavel, "GPL-3.0 License", "Free & open-source software") to "https://github.com/tpxlegend/Getiy",
                     ),
                     onOpen = { FileShareHelper.openExternalUrl(context, it) },
                 )
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(PopCardShape)
-                        .background(pop.card)
-                        .clickable {
-                            FileShareHelper.openExternalUrl(context, "https://github.com/Asta39/grab/blob/main/LICENSE")
-                        }
-                        .padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Rounded.Gavel, contentDescription = null, tint = pop.text)
-                    Spacer(Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Open-source license",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                color = pop.text,
-                                fontWeight = FontWeight.Bold,
-                            ),
-                        )
-                        Text(
-                            text = "Free software under GPL-3.0",
-                            style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
-                        )
-                    }
-                    Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = pop.muted, modifier = Modifier.size(18.dp))
-                }
-
-                Spacer(Modifier.height(22.dp))
+                Spacer(Modifier.height(18.dp))
                 Text(
-                    text = "Download only what you have the right to save. Respect creators and each site's rules. Grab isn't affiliated with any site it supports.",
+                    text = "Download only what you have the right to save. Respect creators and each site's rules. Getiy isn't affiliated with any site it supports.",
                     style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AboutBentoLinkTile(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val pop = GrabThemeTokens.pop
+    Column(
+        modifier = modifier
+            .clip(PopCardShape)
+            .background(pop.card)
+            .border(1.dp, pop.track, PopCardShape)
+            .clickable {
+                GrabHaptics.selection()
+                onClick()
+            }
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(accent.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(19.dp))
+            }
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = pop.muted, modifier = Modifier.size(16.dp))
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall.copy(
+                color = pop.text,
+                fontWeight = FontWeight.ExtraBold,
+            ),
+        )
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodySmall.copy(color = pop.muted),
+        )
     }
 }
 
@@ -249,10 +311,11 @@ private fun UpdateCheckCard(
             .fillMaxWidth()
             .clip(PopCardShape)
             .background(if (highlight) pop.soft else pop.card)
+            .border(BorderStroke(1.dp, if (highlight) GetiyMint else pop.track), PopCardShape)
             .padding(18.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = pop.text, modifier = Modifier.size(28.dp))
+            Icon(icon, contentDescription = null, tint = pop.strong, modifier = Modifier.size(26.dp))
             Spacer(Modifier.width(12.dp))
             Text(
                 text = title,
@@ -271,7 +334,7 @@ private fun UpdateCheckCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(pop.bg)
                     .padding(12.dp),
             ) {
@@ -281,11 +344,12 @@ private fun UpdateCheckCard(
                 )
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
         if (state is ReleaseCheckState.Available) {
             PopButton(
                 label = "Open release page",
                 icon = Icons.Rounded.OpenInNew,
+                useGradient = true,
                 height = 48.dp,
                 onClick = { onOpenRelease(state.htmlUrl) },
             )
@@ -293,6 +357,7 @@ private fun UpdateCheckCard(
             PopButton(
                 label = if (state is ReleaseCheckState.Error) "Try again" else "Check now",
                 icon = Icons.Rounded.Refresh,
+                useGradient = true,
                 busy = state is ReleaseCheckState.Checking,
                 enabled = state !is ReleaseCheckState.Checking,
                 height = 48.dp,
@@ -313,7 +378,8 @@ private fun LinkCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(PopCardShape)
-            .background(pop.card),
+            .background(pop.card)
+            .border(1.dp, pop.track, PopCardShape),
     ) {
         items.forEachIndexed { idx, (meta, url) ->
             Row(
@@ -323,10 +389,10 @@ private fun LinkCard(
                         GrabHaptics.selection()
                         onOpen(url)
                     }
-                    .padding(18.dp),
+                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(meta.first, contentDescription = null, tint = pop.text)
+                Icon(meta.first, contentDescription = null, tint = pop.strong, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -349,7 +415,7 @@ private fun LinkCard(
                 )
             }
             if (idx < items.lastIndex) {
-                HorizontalDivider(color = pop.track, modifier = Modifier.padding(horizontal = 18.dp))
+                HorizontalDivider(color = pop.track, modifier = Modifier.padding(horizontal = 16.dp))
             }
         }
     }

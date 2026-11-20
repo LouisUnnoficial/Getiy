@@ -172,6 +172,7 @@ fun RingtoneBottomSheet(
                 PopButton(
                     label = "Cut & save ringtone",
                     icon = Icons.Rounded.ContentCut,
+                    useGradient = true,
                     busy = busy,
                     enabled = totalDuration != null,
                     onClick = {
@@ -188,7 +189,7 @@ fun RingtoneBottomSheet(
                             result.onSuccess { uri ->
                                 GrabHaptics.success()
                                 savedUri = uri
-                                onToast("Ringtone saved", "Saved to Ringtones/Grab", false)
+                                onToast("Ringtone saved", "Saved to Ringtones/Getiy", false)
                             }.onFailure { err ->
                                 GrabHaptics.error()
                                 errorMsg = err.message ?: "Couldn't create ringtone"
@@ -201,6 +202,7 @@ fun RingtoneBottomSheet(
                 PopButton(
                     label = "Set as default ringtone",
                     icon = Icons.Rounded.RingVolume,
+                    useGradient = true,
                     onClick = {
                         val ok = onSetRingtone(savedUri!!)
                         if (ok) {
@@ -209,7 +211,7 @@ fun RingtoneBottomSheet(
                             onDismiss()
                         } else {
                             onToast(
-                                "Allow Grab to change ringtone",
+                                "Allow Getiy to change ringtone",
                                 "Turn on \"Modify system settings\", then tap Set again.",
                                 false,
                             )

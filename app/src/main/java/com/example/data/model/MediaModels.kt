@@ -4,6 +4,7 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Locale
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -44,7 +45,7 @@ enum class AppThemeMode(val label: String) {
 
     companion object {
         fun fromName(name: String?): AppThemeMode =
-            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: SYSTEM
+            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: DARK
     }
 }
 
@@ -231,7 +232,7 @@ object MediaHelpers {
         if (bytes == null || bytes <= 0L) return null
         val mb = 1024L * 1024L
         return when {
-            bytes >= 1024L * mb -> String.format("%.1f GB", bytes.toDouble() / (1024.0 * mb))
+            bytes >= 1024L * mb -> String.format(Locale.US, "%.1f GB", bytes.toDouble() / (1024.0 * mb))
             bytes >= mb -> "${(bytes.toDouble() / mb).roundToLong()} MB"
             else -> "${(bytes.toDouble() / 1024.0).roundToLong().coerceAtLeast(1)} KB"
         }
@@ -243,9 +244,9 @@ object MediaHelpers {
         val m = (total % 3600) / 60
         val s = total % 60
         return if (h > 0) {
-            String.format("%d:%02d:%02d", h, m, s)
+            String.format(Locale.US, "%d:%02d:%02d", h, m, s)
         } else {
-            String.format("%d:%02d", m, s)
+            String.format(Locale.US, "%d:%02d", m, s)
         }
     }
 
@@ -306,11 +307,12 @@ object MediaHelpers {
         if (trim) {
             fun secs(v: Double): String =
                 if (v == v.roundToInt().toDouble()) v.roundToInt().toString()
-                else String.format("%.1f", v)
+                else String.format(Locale.US, "%.1f", v)
             val startStr = secs(trimStart ?: 0.0)
             val endStr = if (trimEnd == null) "inf" else secs(trimEnd)
             args.add("--download-sections")
             args.add("*$startStr-$endStr")
+            args.add("--force-keyframes-at-cuts")
         }
         return args
     }

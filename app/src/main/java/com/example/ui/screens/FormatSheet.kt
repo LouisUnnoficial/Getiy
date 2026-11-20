@@ -330,6 +330,7 @@ fun FormatBottomSheet(
             PopButton(
                 label = ctaLabel,
                 icon = Icons.Rounded.Download,
+                useGradient = true,
                 enabled = canDownload,
                 onClick = onDownload,
                 tag = "format_download_button",
